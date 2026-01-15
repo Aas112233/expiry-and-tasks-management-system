@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String    @id @default(uuid())
+  employeeId  String?   @unique // Optional, for "Employee" records
+  name        String
+  email       String    @unique
+  password    String    // Hashed
+  role        String    @default("Staff") // Admin, Manager, Staff
+  branch      String    // Branch Name or ID
+  phone       String?
+  avatar      String?
+  status      String    @default("Active") // Active, Inactive
+  permissions String?   // JSON string defining granular permissions
+  lastActive  DateTime  @default(now())
+  tokenVersion Int      @default(0)
+  
+  tasksAssigned Task[]  @relation("AssignedTo")
+  tasksCreated  Task[]  @relation("CreatedBy")
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model InventoryItem {
+  id          String    @id @default(uuid())
+  productName String
+  barcode     String?
+  quantity    Int
+  unit        String    @default("pcs") // pcs, kg, box
+  mfgDate     DateTime
+  expDate     DateTime
+  branch      String
+  status      String    // Computed: Expired, Critical, etc. (Can be stored or just computed)
+  notes       String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  priority    String    @default("Medium") // High, Medium, Low
+  status      String    @default("Open")   // Open, In Progress, Done, Overdue
+  dueDate     DateTime
+  branch      String
+  
+  assignedToId String?
+  assignedTo   User?    @relation("AssignedTo", fields: [assignedToId], references: [id])
+  assigneeName String?  // Fallback for text-based assignment
+  
+  createdById  String?
+  createdBy    User?    @relation("CreatedBy", fields: [createdById], references: [id])
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
