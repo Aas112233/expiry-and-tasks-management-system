@@ -395,8 +395,15 @@ const Catalog: React.FC = () => {
                                     <input
                                         required
                                         type="text"
+                                        pattern="[0-9]*"
+                                        inputMode="numeric"
                                         value={formData.barcode}
-                                        onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === '' || /^\d+$/.test(val)) {
+                                                setFormData({ ...formData, barcode: val });
+                                            }
+                                        }}
                                         className="w-full px-6 py-4 bg-slate-950/50 border border-white/10 rounded-2xl text-white font-mono font-bold placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all shadow-inner"
                                         placeholder="00000000..."
                                     />
@@ -412,12 +419,10 @@ const Catalog: React.FC = () => {
                                         onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                                         className="w-full px-6 py-4 bg-slate-950/50 border border-white/10 rounded-2xl text-white font-bold focus:outline-none focus:ring-2 focus:ring-orange-500/40 transition-all shadow-inner appearance-none cursor-pointer"
                                     >
-                                        <option value="pcs">Pieces (pcs)</option>
-                                        <option value="kg">Kilogram (kg)</option>
-                                        <option value="g">Gram (g)</option>
-                                        <option value="ltr">Liter (ltr)</option>
-                                        <option value="box">Box</option>
-                                        <option value="pack">Pack</option>
+                                        <option value="pcs">pcs</option>
+                                        <option value="box">box</option>
+                                        <option value="bundle">bundle</option>
+                                        <option value="carton">carton</option>
                                     </select>
                                 </div>
                             </div>

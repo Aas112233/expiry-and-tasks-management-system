@@ -452,10 +452,17 @@ export default function Inventory() {
                       <div className="relative flex-1">
                         <input
                           type="text"
+                          pattern="[0-9]*"
+                          inputMode="numeric"
                           className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono"
-                          placeholder="Scan or type..."
+                          placeholder="Scan or type numbers..."
                           value={newItem.barcode || ''}
-                          onChange={e => handleBarcodeChange(e.target.value)}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val === '' || /^\d+$/.test(val)) {
+                              handleBarcodeChange(val);
+                            }
+                          }}
                         />
                         <Scan className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       </div>
@@ -474,13 +481,16 @@ export default function Inventory() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Unit Type</label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm"
-                    placeholder="e.g. Box, Kg, Liter"
-                    value={newItem.unitName || ''}
+                  <select
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
+                    value={newItem.unitName || 'pcs'}
                     onChange={e => setNewItem({ ...newItem, unitName: e.target.value })}
-                  />
+                  >
+                    <option value="pcs">pcs</option>
+                    <option value="box">box</option>
+                    <option value="bundle">bundle</option>
+                    <option value="carton">carton</option>
+                  </select>
                 </div>
 
                 <div>

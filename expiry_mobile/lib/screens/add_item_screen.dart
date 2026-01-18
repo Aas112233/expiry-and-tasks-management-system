@@ -88,6 +88,30 @@ class _AddItemScreenState extends State<AddItemScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_expDate.isBefore(_mfgDate)) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1E293B),
+            title: const Text('Invalid Dates',
+                style: TextStyle(color: Colors.white)),
+            content: const Text(
+                'Expiry date cannot be before manufacturing date.',
+                style: TextStyle(color: Colors.white70)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK',
+                    style: TextStyle(color: Colors.blueAccent)),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
     final auth = context.read<AuthProvider>();
@@ -287,7 +311,12 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 controller: _barcodeController,
                 label: 'Barcode / SKU',
                 icon: Icons.qr_code_scanner,
-                validator: (v) => v!.isEmpty ? 'Barcode is required' : null,
+                keyboardType: TextInputType.number,
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Barcode is required';
+                  if (!RegExp(r'^[0-9]+$').hasMatch(v)) return 'Numbers only';
+                  return null;
+                },
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -333,7 +362,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
                       label: 'Quantity',
                       icon: Icons.numbers,
                       keyboardType: TextInputType.number,
-                      validator: (v) => v!.isEmpty ? 'Required' : null,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Required';
+                        if (int.tryParse(v) == null) return 'Numbers only';
+                        return null;
+                      },
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -350,7 +383,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                           value: _unit,
                           dropdownColor: const Color(0xFF1E293B),
                           style: const TextStyle(color: Colors.white),
-                          items: ['pcs', 'kg', 'ltr', 'box', 'pkt']
+                          items: ['pcs', 'box', 'bundle', 'carton']
                               .map((u) =>
                                   DropdownMenuItem(value: u, child: Text(u)))
                               .toList(),
