@@ -46,6 +46,26 @@ class InventoryProvider with ChangeNotifier {
     }
   }
 
+  Future<void> updateItem(String id, Map<String, dynamic> itemData) async {
+    try {
+      await _apiClient.dio.put('/inventory/$id', data: itemData);
+      await fetchItems();
+    } catch (e) {
+      debugPrint('Update item error: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteItem(String id) async {
+    try {
+      await _apiClient.dio.delete('/inventory/$id');
+      await fetchItems();
+    } catch (e) {
+      debugPrint('Delete item error: $e');
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>?> lookupCatalog(String barcode) async {
     try {
       final response = await _apiClient.dio.get('/catalog/$barcode');

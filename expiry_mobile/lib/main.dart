@@ -19,7 +19,13 @@ import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await NotificationService.initialize();
+
+  try {
+    await NotificationService.initialize();
+  } catch (e) {
+    debugPrint('Error initializing notifications: $e');
+  }
+
   runApp(
     MultiProvider(
       providers: [
@@ -46,10 +52,9 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterial3: true,
       ),
+      home: const SplashScreen(),
       // Define named routes for stability
-      initialRoute: '/',
       routes: {
-        '/': (context) => const SplashScreen(),
         '/auth': (context) => const AuthChecker(),
         '/dashboard': (context) => const DashboardScreen(),
         '/inventory': (context) => const InventoryScreen(),

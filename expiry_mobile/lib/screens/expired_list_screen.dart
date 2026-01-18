@@ -20,6 +20,55 @@ class _ExpiredListScreenState extends State<ExpiredListScreen> {
     });
   }
 
+  void _confirmDiscard(BuildContext context, dynamic item) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title:
+            const Text('Discard Item', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to discard ${item['productName']}? This will remove it from inventory.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white38)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await context
+                    .read<InventoryProvider>()
+                    .deleteItem(item['id'].toString());
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Item discarded successfully'),
+                      backgroundColor: Colors.redAccent,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Discard',
+                style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -114,7 +163,7 @@ class _ExpiredListScreenState extends State<ExpiredListScreen> {
                   trailing:
                       const Icon(Icons.delete_outline, color: Colors.redAccent),
                   onTap: () {
-                    // TODO: Action for expired item (Discard/Remove)
+                    _confirmDiscard(context, item);
                   },
                 ),
               );

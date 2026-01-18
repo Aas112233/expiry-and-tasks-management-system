@@ -8,7 +8,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class AddItemScreen extends StatefulWidget {
-  const AddItemScreen({super.key});
+  final Map<String, dynamic>? editingItem;
+  const AddItemScreen({super.key, this.editingItem});
 
   @override
   State<AddItemScreen> createState() => _AddItemScreenState();
@@ -34,6 +35,18 @@ class _AddItemScreenState extends State<AddItemScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.editingItem != null) {
+      final item = widget.editingItem!;
+      _nameController.text = item['productName'] ?? '';
+      _barcodeController.text = item['barcode'] ?? '';
+      _quantityController.text = (item['quantity'] ?? '').toString();
+      _notesController.text = item['notes'] ?? '';
+      _unit = item['unit'] ?? 'pcs';
+      _mfgDate = DateTime.tryParse(item['mfgDate'] ?? '') ?? DateTime.now();
+      _expDate = DateTime.tryParse(item['expDate'] ?? '') ?? DateTime.now();
+      _hasCatalogMatch = true; // Don't lookup if editing
+      _lastLookupBarcode = _barcodeController.text;
+    }
     _barcodeController.addListener(_onBarcodeChanged);
   }
 
@@ -128,25 +141,42 @@ class _AddItemScreenState extends State<AddItemScreen> {
     };
 
     try {
-      await context.read<InventoryProvider>().addItem(itemData);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Item added successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        // Clear form for next entry
-        _nameController.clear();
-        _barcodeController.clear();
-        _quantityController.clear();
-        _notesController.clear();
-        setState(() {
-          _mfgDate = DateTime.now();
-          _expDate = DateTime.now().add(const Duration(days: 90));
-          _hasCatalogMatch = false;
-          _lastLookupBarcode = null;
-        });
+      if (widget.editingItem != null) {
+        await context.read<InventoryProvider>().updateItem(
+              widget.editingItem!['id'].toString(),
+              itemData,
+            );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Item updated successfully!'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          Navigator.pop(context);
+        }
+      } else {
+        await context.read<InventoryProvider>().addItem(itemData);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Item added successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          // Clear form for next entry
+          _nameController.clear();
+          _barcodeController.clear();
+          _quantityController.clear();
+          _notesController.clear();
+          setState(() {
+            _mfgDate = DateTime.now();
+            _expDate = DateTime.now().add(const Duration(days: 90));
+            _hasCatalogMatch = false;
+            _lastLookupBarcode = null;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -286,13 +316,13 @@ class _AddItemScreenState extends State<AddItemScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title:
-            const Text('Add New Item', style: TextStyle(color: Colors.white)),
+        title: Text(widget.editingItem != null ? 'Edit Item' : 'Add New Item',
+            style: const TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      drawer: const AppDrawer(),
+      drawer: widget.editingItem != null ? null : const AppDrawer(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -431,8 +461,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
                   onPressed: _isSubmitting ? null : _submit,
                   child: _isSubmitting
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Save Item',
-                          style: TextStyle(
+                      : Text(
+                          widget.editingItem != null
+                              ? 'Update Item'
+                              : 'Save Item',
+                          style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: Colors.white)),

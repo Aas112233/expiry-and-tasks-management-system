@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/inventory_provider.dart';
 import '../widgets/app_drawer.dart';
+import 'add_item_screen.dart';
 import 'package:intl/intl.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -49,6 +50,107 @@ class _InventoryScreenState extends State<InventoryScreen> {
     });
 
     return filtered;
+  }
+
+  void _showItemActions(BuildContext context, dynamic item) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading:
+                  const Icon(Icons.edit_outlined, color: Colors.blueAccent),
+              title: const Text('Edit Item',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AddItemScreen(editingItem: item),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.delete_outline, color: Colors.redAccent),
+              title: const Text('Delete Item',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _confirmDelete(context, item);
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, dynamic item) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Delete Item', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to delete ${item['productName']}?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white38)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await context
+                    .read<InventoryProvider>()
+                    .deleteItem(item['id'].toString());
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Item deleted successfully'),
+                      backgroundColor: Colors.redAccent,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              }
+            },
+            child:
+                const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -157,126 +259,135 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E293B),
                         borderRadius: BorderRadius.circular(15),
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.05)),
+                        border:
+                            Border.all(color: Colors.white.withValues(alpha: 0.05)),
                       ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        leading: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: daysRemaining < 0
-                                ? Colors.redAccent.withValues(alpha: 0.1)
-                                : Colors.blue.withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                              daysRemaining < 0
-                                  ? Icons.error_outline
-                                  : Icons.inventory_2_outlined,
+                      child: InkWell(
+                        onLongPress: () => _showItemActions(context, item),
+                        borderRadius: BorderRadius.circular(15),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
                               color: daysRemaining < 0
-                                  ? Colors.redAccent
-                                  : Colors.blueAccent),
-                        ),
-                        title: Text(
-                          item['productName'] ?? 'Unknown Item',
-                          style: const TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                const Icon(Icons.store,
-                                    color: Colors.white24, size: 12),
-                                const SizedBox(width: 4),
-                                Text(
-                                  branch,
-                                  style: const TextStyle(
-                                      color: Colors.blueAccent,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(width: 8),
-                                const Icon(Icons.qr_code,
-                                    color: Colors.white24, size: 12),
-                                const SizedBox(width: 4),
-                                Text(
-                                  item['barcode'] ?? 'N/A',
-                                  style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.4),
-                                      fontSize: 11),
-                                ),
-                              ],
+                                  ? Colors.redAccent.withValues(alpha: 0.1)
+                                  : Colors.blue.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
                             ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Text(
-                                  'Exp: ${DateFormat('dd MMM yyyy').format(expDate)}',
-                                  style: TextStyle(
-                                    color: daysRemaining < 0
-                                        ? Colors.redAccent
-                                        : Colors.white38,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 1),
-                                  decoration: BoxDecoration(
-                                      color: daysRemaining < 0
-                                          ? Colors.redAccent
-                                              .withValues(alpha: 0.1)
-                                          : (daysRemaining <= 15
-                                              ? Colors.orangeAccent
-                                                  .withValues(alpha: 0.1)
-                                              : Colors.greenAccent
-                                                  .withValues(alpha: 0.1)),
-                                      borderRadius: BorderRadius.circular(4)),
-                                  child: Text(
-                                    daysRemaining < 0
-                                        ? 'EXPIRED'
-                                        : (daysRemaining == 0
-                                            ? 'EXPIRES TODAY'
-                                            : '$daysRemaining days left'),
-                                    style: TextStyle(
-                                        color: daysRemaining < 0
-                                            ? Colors.redAccent
-                                            : (daysRemaining <= 15
-                                                ? Colors.orangeAccent
-                                                : Colors.greenAccent),
-                                        fontSize: 10,
+                            child: Icon(
+                                daysRemaining < 0
+                                    ? Icons.error_outline
+                                    : Icons.inventory_2_outlined,
+                                color: daysRemaining < 0
+                                    ? Colors.redAccent
+                                    : Colors.blueAccent),
+                          ),
+                          title: Text(
+                            item['productName'] ?? 'Unknown Item',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.store,
+                                      color: Colors.white24, size: 12),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    branch,
+                                    style: const TextStyle(
+                                        color: Colors.blueAccent,
+                                        fontSize: 11,
                                         fontWeight: FontWeight.bold),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ],
+                                  const SizedBox(width: 8),
+                                  const Icon(Icons.qr_code,
+                                      color: Colors.white24, size: 12),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    item['barcode'] ?? 'N/A',
+                                    style: TextStyle(
+                                        color:
+                                            Colors.white.withValues(alpha: 0.4),
+                                        fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Exp: ${DateFormat('dd MMM yyyy').format(expDate)}',
+                                    style: TextStyle(
+                                      color: daysRemaining < 0
+                                          ? Colors.redAccent
+                                          : Colors.white38,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 1),
+                                    decoration: BoxDecoration(
+                                        color: daysRemaining < 0
+                                            ? Colors.redAccent
+                                                .withValues(alpha: 0.1)
+                                            : (daysRemaining <= 15
+                                                ? Colors.orangeAccent
+                                                    .withValues(alpha: 0.1)
+                                                : Colors.greenAccent
+                                                    .withValues(alpha: 0.1)),
+                                        borderRadius: BorderRadius.circular(4)),
+                                    child: Text(
+                                      daysRemaining < 0
+                                          ? 'EXPIRED'
+                                          : (daysRemaining == 0
+                                              ? 'EXPIRES TODAY'
+                                              : '$daysRemaining days left'),
+                                      style: TextStyle(
+                                          color: daysRemaining < 0
+                                              ? Colors.redAccent
+                                              : (daysRemaining <= 15
+                                                  ? Colors.orangeAccent
+                                                  : Colors.greenAccent),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text('${item['quantity']}',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16)),
+                              Text(item['unit'] ?? 'pcs',
+                                  style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.3),
+                                      fontSize: 10)),
+                            ],
+                          ),
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Detail view coming soon!')),
+                            );
+                          },
                         ),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text('${item['quantity']}',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16)),
-                            Text(item['unit'] ?? 'pcs',
-                                style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.3),
-                                    fontSize: 10)),
-                          ],
-                        ),
-                        onTap: () {
-                          // TODO: Open Detailed View
-                        },
                       ),
                     );
                   },
