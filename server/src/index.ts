@@ -12,6 +12,7 @@ import employeeRoutes from './routes/employeeRoutes';
 import branchRoutes from './routes/branchRoutes';
 import analyticsRoutes from './routes/analyticsRoutes';
 import backupRoutes from './routes/backupRoutes';
+import catalogRoutes from './routes/catalogRoutes';
 
 // ... 
 
@@ -49,9 +50,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/employees', employeeRoutes);
-app.use('/api/branches', branchRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/backup', backupRoutes);
+app.use('/api/catalog', catalogRoutes);
 
 import prisma, { withTransactionRetry, initializeDb, dbStatus } from './prisma';
 

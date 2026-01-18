@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma, { withTransactionRetry } from '../prisma';
+import { updateCatalogItem } from './catalogController';
 
 /**
  * HELPER: Status Calculator
@@ -36,7 +37,7 @@ export const getAllItems = async (req: Request, res: Response): Promise<void> =>
         }
 
         const items = await withTransactionRetry(() =>
-            prisma.inventoryItem.findMany({
+            (prisma as any).inventoryItem.findMany({
                 where,
                 orderBy: { createdAt: 'desc' }
             })
@@ -53,7 +54,7 @@ export const createItem = async (req: Request, res: Response): Promise<void> => 
         const {
             productName, barcode, quantity, remainingQty,
             unit, unitName, mfgDate, expDate, branch, notes
-        } = req.body;
+        } = (req as any).body;
 
         const dbUnit = unit || unitName || 'pcs';
         const dbQuantity = quantity !== undefined ? Number(quantity) : (remainingQty !== undefined ? Number(remainingQty) : 0);
@@ -75,7 +76,7 @@ export const createItem = async (req: Request, res: Response): Promise<void> => 
         const computedStatus = calculateExpiryStatus(expDate);
 
         const item = await withTransactionRetry(() =>
-            prisma.inventoryItem.create({
+            (prisma as any).inventoryItem.create({
                 data: {
                     productName,
                     barcode: barcode || null,
@@ -90,6 +91,11 @@ export const createItem = async (req: Request, res: Response): Promise<void> => 
             })
         );
 
+        // SYNC TO CATALOG
+        if (barcode) {
+            updateCatalogItem(barcode, productName, dbUnit);
+        }
+
         console.log(`[Inventory] Item created: ${productName} (${computedStatus})`);
         res.status(201).json(item);
     } catch (error: any) {
@@ -100,11 +106,11 @@ export const createItem = async (req: Request, res: Response): Promise<void> => 
 
 export const updateItem = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { id } = req.params;
+        const { id } = (req as any).params;
         const {
             productName, barcode, quantity, remainingQty,
             unit, unitName, mfgDate, expDate, branch, notes
-        } = req.body;
+        } = (req as any).body;
 
         const dbQuantity = quantity !== undefined ? Number(quantity) : (remainingQty !== undefined ? Number(remainingQty) : undefined);
         const dbUnit = unit || unitName;
@@ -148,11 +154,20 @@ export const updateItem = async (req: Request, res: Response): Promise<void> => 
         }
 
         const item = await withTransactionRetry(() =>
-            prisma.inventoryItem.update({
+            (prisma as any).inventoryItem.update({
                 where: { id: id as string },
                 data: updateData
             })
         );
+
+        // SYNC TO CATALOG IF BARCODE IS PRESENT
+        const catalogBarcode = barcode || existingItem.barcode;
+        const catalogName = productName || existingItem.productName;
+        const catalogUnit = dbUnit || existingItem.unit;
+
+        if (catalogBarcode) {
+            updateCatalogItem(catalogBarcode, catalogName, catalogUnit);
+        }
 
         console.log(`[Inventory] Item updated: ${id}`);
         res.json(item);
@@ -181,7 +196,7 @@ export const deleteItem = async (req: Request, res: Response): Promise<void> => 
             return;
         }
 
-        await withTransactionRetry(() => prisma.inventoryItem.delete({ where: { id: id as string } }));
+        await withTransactionRetry(() => (prisma as any).inventoryItem.delete({ where: { id: id as string } }));
         console.log(`[Inventory] Item deleted: ${id}`);
         res.json({ message: 'Item deleted successfully' });
     } catch (error: any) {

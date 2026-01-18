@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -18,16 +17,13 @@ class _LoginScreenState extends State<LoginScreen> {
   void _handleLogin() async {
     setState(() => _isLoading = true);
     final success = await context.read<AuthProvider>().login(
-      _emailController.text,
-      _passwordController.text,
-    );
+          _emailController.text,
+          _passwordController.text,
+        );
     setState(() => _isLoading = false);
 
     if (success && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
-      );
+      // AuthChecker in main.dart will automatically switch to Dashboard
     } else if (mounted) {
       ScaffoldMessenger.of(
         context,

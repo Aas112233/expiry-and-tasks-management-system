@@ -7,17 +7,34 @@ class AuthProvider with ChangeNotifier {
   final _storage = const FlutterSecureStorage();
 
   bool _isAuthenticated = false;
+  bool _isLoading = true; // Start with loading true
+
   bool get isAuthenticated => _isAuthenticated;
+  bool get isLoading => _isLoading;
 
   String? _userName;
+  String? _userRole;
+  String? _userBranch;
+
   String? get userName => _userName;
+  String? get userRole => _userRole;
+  String? get userBranch => _userBranch;
 
   Future<void> checkAuth() async {
     final token = await _storage.read(key: 'token');
     final name = await _storage.read(key: 'userName');
-    if (token != null) {
-      _isAuthenticated = true;
-      _userName = name;
+    final role = await _storage.read(key: 'userRole');
+    final branch = await _storage.read(key: 'userBranch');
+
+    try {
+      if (token != null) {
+        _isAuthenticated = true;
+        _userName = name;
+        _userRole = role;
+        _userBranch = branch;
+      }
+    } finally {
+      _isLoading = false;
       notifyListeners();
     }
   }
@@ -34,9 +51,13 @@ class AuthProvider with ChangeNotifier {
 
       await _storage.write(key: 'token', value: token);
       await _storage.write(key: 'userName', value: user['name']);
+      await _storage.write(key: 'userRole', value: user['role']);
+      await _storage.write(key: 'userBranch', value: user['branch']);
 
       _isAuthenticated = true;
       _userName = user['name'];
+      _userRole = user['role'];
+      _userBranch = user['branch'];
       notifyListeners();
       return true;
     } catch (e) {
@@ -49,6 +70,8 @@ class AuthProvider with ChangeNotifier {
     await _storage.deleteAll();
     _isAuthenticated = false;
     _userName = null;
+    _userRole = null;
+    _userBranch = null;
     notifyListeners();
   }
 }

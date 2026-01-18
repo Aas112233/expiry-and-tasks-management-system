@@ -33,6 +33,8 @@ export default function Inventory() {
     notes: ''
   });
 
+  const [isLookingUp, setIsLookingUp] = useState(false);
+
   // Initial Load
   useEffect(() => {
     loadInventory();
@@ -100,6 +102,29 @@ export default function Inventory() {
     }
     setValidationError(null);
     setIsModalOpen(true);
+  };
+
+  const handleBarcodeChange = async (barcode: string) => {
+    setNewItem(prev => ({ ...prev, barcode }));
+
+    // Only lookup for reasonably long barcodes
+    if (barcode.length >= 4) {
+      setIsLookingUp(true);
+      try {
+        const catalogItem = await inventoryService.getCatalogItemByBarcode(barcode);
+        if (catalogItem && !newItem.productName) { // Only auto-fill if the name is empty or we just scanned
+          setNewItem(prev => ({
+            ...prev,
+            productName: catalogItem.productName || prev.productName,
+            unitName: catalogItem.unit || prev.unitName
+          }));
+        }
+      } catch (error) {
+        // Silently ignore failures/not found
+      } finally {
+        setIsLookingUp(false);
+      }
+    }
   };
 
   const handleCloseModal = () => {
@@ -427,9 +452,13 @@ export default function Inventory() {
                       className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono"
                       placeholder="Scan or type..."
                       value={newItem.barcode || ''}
-                      onChange={e => setNewItem({ ...newItem, barcode: e.target.value })}
+                      onChange={e => handleBarcodeChange(e.target.value)}
                     />
-                    <Scan className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    {isLookingUp ? (
+                      <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-500 w-4 h-4 animate-spin" />
+                    ) : (
+                      <Scan className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    )}
                   </div>
                 </div>
 

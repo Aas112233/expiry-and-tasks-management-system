@@ -9,6 +9,19 @@ class InventoryProvider with ChangeNotifier {
   List<dynamic> get items => _items;
   bool get isLoading => _isLoading;
 
+  List<dynamic> get expiredItems => _items.where((item) {
+        final expDate =
+            DateTime.tryParse(item['expDate'] ?? '') ?? DateTime.now();
+        return expDate.isBefore(DateTime.now());
+      }).toList();
+
+  List<dynamic> get nearExpiryItems => _items.where((item) {
+        final expDate =
+            DateTime.tryParse(item['expDate'] ?? '') ?? DateTime.now();
+        final daysToExpiry = expDate.difference(DateTime.now()).inDays;
+        return daysToExpiry >= 0 && daysToExpiry <= 30;
+      }).toList();
+
   Future<void> fetchItems() async {
     _isLoading = true;
     notifyListeners();
@@ -30,6 +43,16 @@ class InventoryProvider with ChangeNotifier {
     } catch (e) {
       debugPrint('Add item error: $e');
       rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>?> lookupCatalog(String barcode) async {
+    try {
+      final response = await _apiClient.dio.get('/catalog/$barcode');
+      return response.data;
+    } catch (e) {
+      debugPrint('Catalog lookup error: $e');
+      return null;
     }
   }
 }
