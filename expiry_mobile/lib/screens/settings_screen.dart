@@ -35,7 +35,8 @@ class SettingsScreen extends StatelessWidget {
               trailing: Switch(
                 value: settings.notificationsEnabled,
                 onChanged: (val) => settings.toggleNotifications(val),
-                activeColor: Colors.blueAccent,
+                activeThumbColor: Colors.blueAccent,
+                activeTrackColor: Colors.blueAccent.withValues(alpha: 0.3),
               ),
             ),
             if (settings.notificationsEnabled) ...[
@@ -48,7 +49,8 @@ class SettingsScreen extends StatelessWidget {
                 trailing: Switch(
                   value: settings.taskNotifications,
                   onChanged: (val) => settings.toggleTaskNotifications(val),
-                  activeColor: Colors.purpleAccent,
+                  activeThumbColor: Colors.purpleAccent,
+                  activeTrackColor: Colors.purpleAccent.withValues(alpha: 0.3),
                 ),
               ),
               const SizedBox(height: 12),
@@ -93,14 +95,14 @@ class SettingsScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
+              color: iconColor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: iconColor, size: 22),
@@ -117,7 +119,8 @@ class SettingsScreen extends StatelessWidget {
                         fontSize: 16)),
                 Text(subtitle,
                     style: TextStyle(
-                        color: Colors.white.withOpacity(0.4), fontSize: 13)),
+                        color: Colors.white.withValues(alpha: 0.4),
+                        fontSize: 13)),
               ],
             ),
           ),
@@ -133,7 +136,7 @@ class SettingsScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -175,7 +178,7 @@ class SettingsScreen extends StatelessWidget {
                     activeTrackColor: Colors.orangeAccent,
                     inactiveTrackColor: Colors.white10,
                     thumbColor: Colors.orangeAccent,
-                    overlayColor: Colors.orangeAccent.withOpacity(0.2),
+                    overlayColor: Colors.orangeAccent.withValues(alpha: 0.2),
                     valueIndicatorColor: Colors.orangeAccent,
                     valueIndicatorTextStyle: const TextStyle(
                         color: Colors.black, fontWeight: FontWeight.bold),
