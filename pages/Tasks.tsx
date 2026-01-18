@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, List, LayoutGrid, Filter, CheckCircle, Clock, Calendar, Search, Edit2, Trash2, X, Save, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
-import { MOCK_EMPLOYEES, BRANCHES } from '../constants';
 import { TaskStatus, TaskPriority, Task, Role } from '../types';
 import { useBranch } from '../BranchContext';
 import { useSearch } from '../SearchContext';
 import { taskService } from '../services/taskService';
+import { userService } from '../services/userService';
 import { useAuth } from '../AuthContext';
 
 export default function Tasks() {
-    const { hasPermission } = useAuth();
+    const { hasPermission, user: currentUser } = useAuth();
+    const { branches } = useBranch();
+    const [employees, setEmployees] = useState<{ id: string, name: string }[]>([]);
     const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
     const [allTasks, setAllTasks] = useState<Task[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -34,7 +36,17 @@ export default function Tasks() {
     // Initial Load
     useEffect(() => {
         loadTasks();
+        loadEmployees();
     }, []);
+
+    const loadEmployees = async () => {
+        try {
+            const users = await userService.getAllUsers();
+            setEmployees(users.map(u => ({ id: u.id, name: u.name })));
+        } catch (e) {
+            console.error("Failed to load employees", e);
+        }
+    };
 
     // Sync Global Branch
     useEffect(() => {
@@ -105,7 +117,7 @@ export default function Tasks() {
             setCurrentTask({
                 priority: TaskPriority.Medium,
                 status: TaskStatus.Open,
-                branch: selectedBranch !== 'All Branches' ? selectedBranch : BRANCHES[0].name
+                branch: currentUser?.role !== Role.Admin ? (currentUser?.branchId || '') : (selectedBranch !== 'All Branches' ? selectedBranch : (branches[0]?.name || ''))
             });
         }
         setValidationError(null);
@@ -137,9 +149,9 @@ export default function Tasks() {
             } else {
                 const newTaskPayload = {
                     ...currentTask,
-                    assignedBy: 'Admin', // Mock user
+                    assignedBy: currentUser?.name || 'Admin', // Use real user name
                     description: currentTask.description || ''
-                } as Omit<Task, 'id'>;
+                } as Omit<Task, 'id'> | any; // Use any to bypass strict type check for now
 
                 const created = await taskService.createTask(newTaskPayload);
                 setAllTasks(prev => [created, ...prev]);
@@ -214,7 +226,7 @@ export default function Tasks() {
                                 disabled={selectedBranch !== 'All Branches'}
                             >
                                 <option>All Branches</option>
-                                {BRANCHES.map(b => <option key={b.id}>{b.name}</option>)}
+                                {branches.map(b => <option key={b.id}>{b.name}</option>)}
                             </select>
                             <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                         </div>
@@ -436,10 +448,17 @@ export default function Tasks() {
                                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
                                         required
                                         value={currentTask.assignedTo || ''}
-                                        onChange={e => setCurrentTask({ ...currentTask, assignedTo: e.target.value })}
+                                        onChange={e => {
+                                            const emp = employees.find(emp => emp.name === e.target.value);
+                                            setCurrentTask({
+                                                ...currentTask,
+                                                assignedTo: e.target.value,
+                                                assignedToId: emp?.id // Keep ID in sync
+                                            });
+                                        }}
                                     >
                                         <option value="" disabled>Select Employee</option>
-                                        {MOCK_EMPLOYEES.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
+                                        {employees.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
                                     </select>
                                 </div>
                                 <div>
@@ -462,11 +481,19 @@ export default function Tasks() {
                                     <select
                                         id="task-branch"
                                         name="taskBranch"
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white disabled:bg-gray-50 disabled:text-gray-500"
                                         value={currentTask.branch || ''}
                                         onChange={e => setCurrentTask({ ...currentTask, branch: e.target.value })}
+                                        disabled={currentUser?.role !== Role.Admin}
                                     >
-                                        {BRANCHES.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                        {currentUser?.role !== Role.Admin ? (
+                                            <option value={currentUser?.branchId}>{currentUser?.branchId}</option>
+                                        ) : (
+                                            <>
+                                                <option value="" disabled>Select Branch</option>
+                                                {branches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                            </>
+                                        )}
                                     </select>
                                 </div>
                                 <div>

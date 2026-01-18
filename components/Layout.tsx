@@ -16,8 +16,19 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
-  LifeBuoy
+  LifeBuoy,
+  Wifi,
+  WifiOff,
+  Server,
+  Database,
+  Activity,
+  RefreshCw,
+  X,
+  CheckCircle,
+  XCircle,
+  Clock
 } from 'lucide-react';
+import { API_BASE_URL } from '../services/apiConfig';
 import { useBranch } from '../BranchContext';
 import { useSearch } from '../SearchContext';
 import { useAuth } from '../AuthContext';
@@ -81,6 +92,44 @@ export default function Layout() {
   const { selectedBranch, setSelectedBranch, branches } = useBranch();
   const { searchQuery, setSearchQuery } = useSearch();
   const { user, logout } = useAuth();
+  const [connectionDetails, setConnectionDetails] = useState({
+    server: false,
+    database: false,
+    loading: false,
+    lastChecked: null as Date | null
+  });
+  const [showStatusOverlay, setShowStatusOverlay] = useState(false);
+
+  // Derived state for the header icon
+  const isConnected = connectionDetails.server && connectionDetails.database;
+
+  const checkConnection = async () => {
+    setConnectionDetails(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch(`${API_BASE_URL}/health`);
+      const data = await res.json();
+
+      setConnectionDetails({
+        server: true,
+        database: data.database === 'connected',
+        loading: false,
+        lastChecked: new Date()
+      });
+    } catch (e) {
+      setConnectionDetails({
+        server: false,
+        database: false,
+        loading: false,
+        lastChecked: new Date()
+      });
+    }
+  };
+
+  useEffect(() => {
+    checkConnection();
+    const interval = setInterval(checkConnection, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, []);
 
   // Clear search when navigating to a new page
   useEffect(() => {
@@ -227,6 +276,18 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center space-x-4 lg:space-x-6">
+            <button
+              onClick={() => setShowStatusOverlay(true)}
+              className={`p-2 relative transition-colors rounded-lg flex items-center justify-center ${isConnected ? 'text-green-600 hover:bg-green-50' : 'text-red-500 hover:bg-red-50'
+                }`}
+              title="System Status"
+            >
+              {isConnected ? <Wifi className="w-6 h-6" /> : <WifiOff className="w-6 h-6" />}
+              <span className={`absolute top-2 right-2 flex h-2.5 w-2.5`}>
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></span>
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+              </span>
+            </button>
             <button className="p-2 text-gray-400 hover:text-blue-600 relative transition-colors hover:bg-blue-50 rounded-lg">
               <Bell className="w-6 h-6" />
               <span className="absolute top-2 right-2.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white animate-pulse"></span>
@@ -280,6 +341,101 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Connection Status Overlay */}
+      {showStatusOverlay && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">System Status</h3>
+                  <p className="text-xs text-gray-500 font-medium">Real-time connectivity check</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStatusOverlay(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              {/* Server Status */}
+              <div className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/30">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${connectionDetails.server ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                    <Server className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-700 text-sm">Backend API</p>
+                    <p className="text-xs text-gray-500">Node/Express Server</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm font-bold ${connectionDetails.server ? 'text-green-600' : 'text-red-600'}`}>
+                    {connectionDetails.server ? 'Online' : 'Offline'}
+                  </span>
+                  {connectionDetails.server ? (
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-red-600" />
+                  )}
+                </div>
+              </div>
+
+              {/* Database Status */}
+              <div className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/30">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${connectionDetails.database ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-700 text-sm">Database</p>
+                    <p className="text-xs text-gray-500">PostgreSQL (Prisma)</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm font-bold ${connectionDetails.database ? 'text-green-600' : 'text-red-600'}`}>
+                    {connectionDetails.database ? 'Connected' : 'Disconnected'}
+                  </span>
+                  {connectionDetails.database ? (
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-red-600" />
+                  )}
+                </div>
+              </div>
+
+              {/* Last Checked */}
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex items-center gap-2 text-gray-400 text-xs font-medium">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Last checked: {connectionDetails.lastChecked ? connectionDetails.lastChecked.toLocaleTimeString() : 'Never'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-gray-50/50 border-t border-gray-100">
+              <button
+                onClick={checkConnection}
+                disabled={connectionDetails.loading}
+                className="w-full py-2.5 bg-white border border-gray-200 hover:border-blue-200 hover:bg-blue-50 text-gray-700 hover:text-blue-600 font-semibold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-sm active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
+              >
+                <RefreshCw className={`w-4 h-4 ${connectionDetails.loading ? 'animate-spin' : ''}`} />
+                {connectionDetails.loading ? 'Checking...' : 'Refresh Status'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

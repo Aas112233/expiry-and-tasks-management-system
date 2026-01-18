@@ -7,9 +7,16 @@ export const getAuthHeaders = () => {
 
 // Generic fetch wrapper to handle errors and headers
 export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
+    const authHeaders = getAuthHeaders();
+
+    // Debug log for development
+    if (Object.keys(authHeaders).length === 0 && !endpoint.includes('/auth/login')) {
+        console.warn(`[API] Making request to ${endpoint} without token!`);
+    }
+
     const headers = {
         'Content-Type': 'application/json',
-        ...getAuthHeaders(),
+        ...authHeaders,
         ...options.headers
     };
 
@@ -19,6 +26,12 @@ export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
     });
 
     if (!response.ok) {
+        if (response.status === 401) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            // Allow the UI to react to the missing token or force reload if critical
+            // window.location.href = '/#/login'; // Optional: force redirect if not handled by context
+        }
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `API Error: ${response.statusText}`);
     }

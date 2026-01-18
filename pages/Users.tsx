@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Lock, Trash2, Search, Filter, MoreVertical, X, Check, Loader2, Key, AlertTriangle } from 'lucide-react';
 import { User, Role } from '../types';
 import { userService } from '../services/userService';
-import { BRANCHES } from '../constants'; // For branch selection dropdown
+import { useBranch } from '../BranchContext';
 import { useAuth } from '../AuthContext';
 
 export default function Users() {
-    const { hasPermission } = useAuth();
+    const { hasPermission, user: loggedInUser } = useAuth();
+    const { branches } = useBranch();
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -247,7 +248,7 @@ export default function Users() {
                                                         Global Access
                                                     </span>
                                                 ) : (
-                                                    <span className="text-sm">{BRANCHES.find(b => b.id === user.branchId)?.name || 'Unknown Branch'}</span>
+                                                    <span className="text-sm">{branches.find(b => b.id === user.branchId)?.name || user.branchId || 'Unknown Branch'}</span>
                                                 )}
                                             </td>
                                             <td className="px-6 py-4">
@@ -344,13 +345,16 @@ export default function Users() {
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                                         <select
+                                            id="user-role"
                                             value={currentUser.role}
                                             onChange={(e) => setCurrentUser({ ...currentUser, role: e.target.value as Role })}
                                             className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
                                         >
                                             <option value={Role.Employee}>Employee</option>
                                             <option value={Role.Manager}>Manager</option>
-                                            <option value={Role.Admin}>Admin</option>
+                                            {loggedInUser?.role === Role.Admin && (
+                                                <option value={Role.Admin}>Admin</option>
+                                            )}
                                         </select>
                                     </div>
                                     <div>
@@ -369,14 +373,22 @@ export default function Users() {
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Branch Assignment</label>
                                     <select
+                                        id="user-branch"
                                         value={currentUser.branchId || ''}
                                         onChange={(e) => setCurrentUser({ ...currentUser, branchId: e.target.value })}
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white disabled:bg-gray-50 disabled:text-gray-500"
+                                        disabled={loggedInUser?.role !== Role.Admin}
                                     >
-                                        <option value="all">Global Access (All Branches)</option>
-                                        {BRANCHES.map(branch => (
-                                            <option key={branch.id} value={branch.id}>{branch.name}</option>
-                                        ))}
+                                        {loggedInUser?.role === Role.Admin && (
+                                            <option value="all">Global Access (All Branches)</option>
+                                        )}
+                                        {loggedInUser?.role === Role.Admin ? (
+                                            branches.map(branch => (
+                                                <option key={branch.id} value={branch.name}>{branch.name}</option>
+                                            ))
+                                        ) : (
+                                            <option key={loggedInUser?.branchId} value={loggedInUser?.branchId}>{loggedInUser?.branchId || 'Your Branch'}</option>
+                                        )}
                                     </select>
                                     <p className="text-xs text-gray-400 mt-1">Users with Global Access can view data from all locations.</p>
                                 </div>
@@ -392,7 +404,15 @@ export default function Users() {
 
                                             const togglePerm = (type: 'read' | 'write') => {
                                                 const newPerms = { ...currentPerms };
-                                                let modP = newPerms[module] || [];
+                                                let modP = newPerms[module];
+
+                                                // Ensure modP is a fresh array
+                                                if (!Array.isArray(modP)) {
+                                                    modP = [];
+                                                } else {
+                                                    modP = [...modP];
+                                                }
+
                                                 if (modP.includes(type)) {
                                                     modP = modP.filter((p: string) => p !== type);
                                                 } else {

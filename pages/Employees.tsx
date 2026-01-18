@@ -5,13 +5,12 @@ import { useBranch } from '../BranchContext';
 import { useSearch } from '../SearchContext';
 import { employeeService } from '../services/employeeService';
 import { userService } from '../services/userService';
-import { BRANCHES } from '../constants';
 
 import { useAuth } from '../AuthContext';
 
 export default function Employees() {
-    const { hasPermission } = useAuth();
-    const { selectedBranch } = useBranch();
+    const { hasPermission, user } = useAuth();
+    const { selectedBranch, branches } = useBranch();
     const { searchQuery } = useSearch();
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -64,9 +63,9 @@ export default function Employees() {
             status: 'Active',
             role: Role.Employee,
             avatar: `https://ui-avatars.com/api/?name=New+Employee&background=random`,
-            branch: selectedBranch !== 'All Branches' ? selectedBranch : BRANCHES[0].name
+            branch: user?.role !== Role.Admin ? (user?.branchId || '') : (selectedBranch !== 'All Branches' ? selectedBranch : (branches[0]?.name || ''))
         });
-        setCreateUserAccount(true); // Default to creating user for new employees? Optional.
+        setCreateUserAccount(true);
         setIsModalOpen(true);
     };
 
@@ -114,12 +113,11 @@ export default function Employees() {
                 // 2. Conditionally Create Login User
                 if (createUserAccount) {
                     try {
-                        const branchId = BRANCHES.find(b => b.name === savedEmployee.branch)?.id || 'all';
                         await userService.createUser({
                             name: savedEmployee.name,
                             email: savedEmployee.email, // Assuming email exists
                             role: savedEmployee.role,
-                            branchId: branchId,
+                            branchId: savedEmployee.branch || 'all',
                             status: 'Active',
                         });
                         alert(`Employee and User Account for ${savedEmployee.email} created successfully!`);
@@ -169,7 +167,7 @@ export default function Employees() {
                             disabled={selectedBranch !== 'All Branches'}
                         >
                             <option>All Branches</option>
-                            {BRANCHES.map(b => <option key={b.id}>{b.name}</option>)}
+                            {branches.map(b => <option key={b.id}>{b.name}</option>)}
                         </select>
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                             <Filter className="w-4 h-4" />
@@ -348,11 +346,20 @@ export default function Employees() {
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
                                         <select
+                                            id="emp-branch"
                                             value={currentEmployee.branch || ''}
                                             onChange={e => setCurrentEmployee({ ...currentEmployee, branch: e.target.value })}
-                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 text-sm"
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 text-sm bg-white disabled:bg-gray-50 disabled:text-gray-500"
+                                            disabled={user?.role !== Role.Admin}
                                         >
-                                            {BRANCHES.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+                                            {user?.role !== Role.Admin ? (
+                                                <option value={user?.branchId}>{user?.branchId}</option>
+                                            ) : (
+                                                <>
+                                                    <option value="" disabled>Select Branch</option>
+                                                    {branches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                                </>
+                                            )}
                                         </select>
                                     </div>
 

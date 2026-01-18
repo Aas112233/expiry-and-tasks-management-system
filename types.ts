@@ -36,7 +36,13 @@ export enum ExpiryStatus {
   Safe = '60+',
 }
 
-// API Endpoint: /api/users/me or /api/users/:id
+export interface ModulePermission {
+  id: string;
+  module: string;
+  canRead: boolean;
+  canWrite: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -45,7 +51,8 @@ export interface User {
   branchId: string | 'all';
   status: 'Active' | 'Suspended';
   lastActive: string;
-  permissions?: string; // JSON string
+  permissions?: string; // Legacy JSON string
+  modulePermissions?: ModulePermission[]; // Relational source of truth
 }
 
 // API Endpoint: /api/employees
@@ -67,7 +74,8 @@ export interface Task {
   title: string;
   description: string;
   assignedBy: string;
-  assignedTo: string; // Employee ID or Name
+  assignedTo: string; // Name
+  assignedToId?: string; // Real User ID (MongoDB)
   branch: string;
   priority: TaskPriority;
   dueDate: string;
@@ -96,4 +104,7 @@ export interface Branch {
   phone: string;
   manager: string;
   status: 'Active' | 'Inactive';
+  employeeCount?: number;
+  activeTasks?: number;
+  criticalItems?: number;
 }

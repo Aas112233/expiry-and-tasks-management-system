@@ -57,6 +57,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!user) return false;
         if (user.role === Role.Admin) return true;
 
+        // 1. Check New Relational Permissions (Source of Truth)
+        if (user.modulePermissions && Array.isArray(user.modulePermissions)) {
+            const modPerm = user.modulePermissions.find(p => p.module === module);
+            if (modPerm) {
+                if (action === 'write') return modPerm.canWrite;
+                // If they have write, they automatically have read
+                return modPerm.canRead || modPerm.canWrite;
+            }
+        }
+
+        // 2. Fallback to Legacy JSON Permissions
         try {
             if (!user.permissions) return false;
             const perms = typeof user.permissions === 'string'
@@ -68,7 +79,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             return modulePerms.includes(action);
         } catch (e) {
-            console.error("Error parsing permissions", e);
             return false;
         }
     };

@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
-import { Plus, Search, MapPin, Phone, User, MoreVertical, Edit2, Trash2, X, Save, Users, ClipboardList, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, User, MoreVertical, Edit2, Trash2, X, Save, Users, ClipboardList, AlertCircle, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import { Branch } from '../types';
 import { useBranch } from '../BranchContext';
-import { MOCK_EMPLOYEES, MOCK_TASKS, MOCK_EXPIRED_ITEMS } from '../constants';
 import { useSearch } from '../SearchContext';
 import { useAuth } from '../AuthContext';
+import { useToast } from '../ToastContext';
 
 export default function Branches() {
     const { hasPermission } = useAuth();
-    const { branches, addBranch, updateBranch, deleteBranch } = useBranch();
+    const { branches, addBranch, updateBranch, deleteBranch, syncBranches } = useBranch();
     const { searchQuery } = useSearch();
+    const { showToast } = useToast();
+
+    // UI Loading states
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -22,13 +27,13 @@ export default function Branches() {
         status: 'Active'
     });
 
-    // Calculate live stats for a branch based on mock data
-    const getBranchStats = (branchName: string) => {
-        const employeeCount = MOCK_EMPLOYEES.filter(e => e.branch === branchName && e.status === 'Active').length;
-        const activeTasks = MOCK_TASKS.filter(t => t.branch === branchName && t.status !== 'Done').length;
-        const criticalItems = MOCK_EXPIRED_ITEMS.filter(i => i.branch === branchName && (i.status === 'Expired' || i.status === '0-15 days')).length;
-
-        return { employeeCount, activeTasks, criticalItems };
+    // Use live stats from the backend (augmented in getAllBranches)
+    const getBranchStats = (branch: Branch) => {
+        return {
+            employeeCount: branch.employeeCount || 0,
+            activeTasks: branch.activeTasks || 0,
+            criticalItems: branch.criticalItems || 0
+        };
     };
 
     const filteredBranches = branches.filter(branch =>
@@ -53,23 +58,32 @@ export default function Branches() {
         setFormData({ status: 'Active' });
     };
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (formData.name && formData.address) {
-            if (editingId) {
-                updateBranch(editingId, formData as Branch);
-            } else {
-                const newBranch: Branch = {
-                    id: Math.random().toString(),
-                    name: formData.name!,
-                    address: formData.address!,
-                    phone: formData.phone || '',
-                    manager: formData.manager || 'Unassigned',
-                    status: formData.status as 'Active' | 'Inactive' || 'Active'
-                };
-                addBranch(newBranch);
+            setIsSaving(true);
+            try {
+                if (editingId) {
+                    await updateBranch(editingId, formData as Branch);
+                    showToast('Branch updated successfully', 'success');
+                } else {
+                    const newBranch: Branch = {
+                        id: Math.random().toString(), // Will be replaced by DB ID
+                        name: formData.name!,
+                        address: formData.address!,
+                        phone: formData.phone || '',
+                        manager: formData.manager || 'Unassigned',
+                        status: formData.status as 'Active' | 'Inactive' || 'Active'
+                    };
+                    await addBranch(newBranch);
+                    showToast('Branch created successfully', 'success');
+                }
+                handleCloseModal();
+            } catch (error) {
+                showToast('Failed to save branch. Please try again.', 'error');
+            } finally {
+                setIsSaving(false);
             }
-            handleCloseModal();
         }
     };
 
@@ -78,11 +92,32 @@ export default function Branches() {
         setIsDeleteModalOpen(true);
     };
 
-    const confirmDelete = () => {
+    const handleSync = async () => {
+        setIsSyncing(true);
+        try {
+            const result = await syncBranches();
+            if (result.created > 0) {
+                showToast(`Synced! Created ${result.created} new branch(es).`, 'success');
+            } else {
+                showToast('All branches are up to date.', 'info');
+            }
+        } catch (error) {
+            showToast('Failed to sync branches.', 'error');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    const confirmDelete = async () => {
         if (deleteId) {
-            deleteBranch(deleteId);
-            setIsDeleteModalOpen(false);
-            setDeleteId(null);
+            try {
+                await deleteBranch(deleteId);
+                showToast('Branch deleted successfully', 'success');
+                setIsDeleteModalOpen(false);
+                setDeleteId(null);
+            } catch (error: any) {
+                showToast(error.message || 'Failed to delete branch', 'error');
+            }
         }
     };
 
@@ -95,13 +130,23 @@ export default function Branches() {
                     <p className="text-sm text-gray-500 mt-1">Manage locations, contact details, and monitor branch health.</p>
                 </div>
                 {hasPermission('Branches', 'write') && (
-                    <button
-                        onClick={() => handleOpenModal()}
-                        className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-colors"
-                    >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add Branch
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleSync}
+                            disabled={isSyncing}
+                            className="flex items-center px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 shadow-sm transition-colors disabled:opacity-50"
+                        >
+                            {isSyncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                            {isSyncing ? 'Syncing...' : 'Sync Branches'}
+                        </button>
+                        <button
+                            onClick={() => handleOpenModal()}
+                            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-colors"
+                        >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Branch
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -130,7 +175,7 @@ export default function Branches() {
                     </div>
                 ) : (
                     filteredBranches.map(branch => {
-                        const stats = getBranchStats(branch.name);
+                        const stats = getBranchStats(branch);
                         return (
                             <div key={branch.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow group">
                                 <div className="flex justify-between items-start mb-4">

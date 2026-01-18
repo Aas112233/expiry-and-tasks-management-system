@@ -1,7 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../prisma';
 
 export const getDashboardStats = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -11,6 +9,15 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
         const next30Days = new Date();
         next30Days.setDate(today.getDate() + 30);
 
+        const user = (req as any).user;
+        const where: any = {};
+        const taskWhere: any = {};
+
+        if (user?.role !== 'Admin' && user?.branch !== 'all') {
+            where.branch = user?.branch;
+            taskWhere.branch = user?.branch;
+        }
+
         // Run queries in parallel for efficiency
         const [
             totalInventory,
@@ -18,10 +25,11 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
             expiringSoon,
             pendingTasks
         ] = await Promise.all([
-            prisma.inventoryItem.count(),
-            prisma.task.count(),
+            prisma.inventoryItem.count({ where }),
+            (prisma as any).task.count({ where: taskWhere }),
             prisma.inventoryItem.count({
                 where: {
+                    ...where,
                     expDate: {
                         gte: today,
                         lte: next30Days
@@ -29,8 +37,11 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
                     status: { not: 'Expired' }
                 }
             }),
-            prisma.task.count({
-                where: { status: { in: ['Open', 'In Progress'] } }
+            (prisma as any).task.count({
+                where: {
+                    ...taskWhere,
+                    status: { in: ['Open', 'In Progress'] }
+                }
             })
         ]);
 
@@ -54,9 +65,16 @@ export const getExpiryTrends = async (req: Request, res: Response): Promise<void
         const thirtyDaysLater = new Date();
         thirtyDaysLater.setDate(today.getDate() + 30);
 
+        const user = (req as any).user;
+        const where: any = {};
+        if (user?.role !== 'Admin' && user?.branch !== 'all') {
+            where.branch = user?.branch;
+        }
+
         // Fetch items expiring in the next 30 days
         const items = await prisma.inventoryItem.findMany({
             where: {
+                ...where,
                 expDate: {
                     gte: today,
                     lte: thirtyDaysLater
@@ -99,6 +117,17 @@ export const getExpiryTrends = async (req: Request, res: Response): Promise<void
 
 export const getBranchDistribution = async (req: Request, res: Response): Promise<void> => {
     try {
+        const user = (req as any).user;
+
+        // If not Admin (and no global access), they only see one branch anyway
+        if (user?.role !== 'Admin' && user?.branch !== 'all') {
+            const count = await prisma.inventoryItem.count({
+                where: { branch: user.branch }
+            });
+            res.json([{ name: user.branch, value: count }]);
+            return;
+        }
+
         // Group inventory count by branch
         const distribution = await prisma.inventoryItem.groupBy({
             by: ['branch'],

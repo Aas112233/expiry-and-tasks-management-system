@@ -1,125 +1,130 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import * as bcrypt from 'bcryptjs';
+import * as jwt from 'jsonwebtoken';
+import prisma from '../prisma';
 
-const prisma = new PrismaClient();
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey123';
 
-export const register = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { name, email, password, role, branch } = req.body;
-
-        const existingUser = await prisma.user.findUnique({ where: { email } });
-        if (existingUser) {
-            res.status(400).json({ message: 'User already exists' });
-            return;
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const user = await prisma.user.create({
-            data: {
-                name,
-                email,
-                password: hashedPassword,
-                role: role || 'Staff',
-                branch: branch || 'Main Branch'
-            }
-        });
-
-        res.status(201).json({ message: 'User created successfully', userId: user.id });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
-    }
-};
-
-export const verifyUser = async (req: any, res: Response): Promise<void> => {
-    try {
-        const userId = req.user.id; // Added by auth middleware
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-
-        if (!user) {
-            res.status(404).json({ message: 'User not found' });
-            return;
-        }
-
-        res.json({
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            branch: user.branch,
-            permissions: user.permissions,
-            avatar: user.avatar
-        });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
-    }
-};
+/**
+ * PRODUCTION AUTH CONTROLLER
+ * Real database lookups and JWT generation.
+ */
 
 export const login = async (req: Request, res: Response): Promise<void> => {
     try {
         const { email, password } = req.body;
 
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user) {
-            res.status(400).json({ message: 'Invalid credentials' });
+        if (!email || !password) {
+            res.status(400).json({ message: 'Email and password are required' });
             return;
         }
 
+        // 1. Find user in MongoDB
+        const user = await (prisma as any).user.findUnique({
+            where: { email },
+            include: { modulePermissions: true }
+        });
+
+        if (!user) {
+            res.status(401).json({ message: 'Invalid credentials' });
+            return;
+        }
+
+        // 2. Verify password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            res.status(400).json({ message: 'Invalid credentials' });
+            res.status(401).json({ message: 'Invalid credentials' });
             return;
         }
 
-        let permissionsObj = {};
-        try {
-            permissionsObj = user.permissions ? JSON.parse(user.permissions) : {};
-        } catch (e) {
-            console.error('Failed to parse permissions for token', e);
-        }
-
+        // 3. Generate JWT
         const token = jwt.sign(
-            {
-                id: user.id,
-                role: user.role,
-                branch: user.branch,
-                permissions: permissionsObj,
-                tokenVersion: user.tokenVersion
-            },
-            process.env.JWT_SECRET || 'secret',
-            { expiresIn: '1d' }
+            { id: user.id, email: user.email, role: user.role, branch: user.branch },
+            JWT_SECRET,
+            { expiresIn: '24h' }
         );
 
+        // 4. Return user data (omit password)
+        const { password: _, ...userData } = user;
+
+        console.log(`[Auth] User logged in: ${user.email}`);
         res.json({
             token,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                branch: user.branch,
-                permissions: user.permissions,
-                avatar: user.avatar
-            }
+            user: userData
         });
+
     } catch (error) {
-        res.status(500).json({ message: 'Server error', error });
+        console.error('[Auth] Login Error:', error);
+        res.status(500).json({ message: 'Internal server error during login' });
     }
 };
 
-export const logout = async (req: any, res: Response): Promise<void> => {
+export const register = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { name, email, password, branch, role } = req.body;
+
+        if (!name || !email || !password || !branch) {
+            res.status(400).json({ message: 'All fields are required' });
+            return;
+        }
+
+        // 1. Check if user exists
+        const existingUser = await (prisma as any).user.findUnique({ where: { email } });
+        if (existingUser) {
+            res.status(400).json({ message: 'Email already in use' });
+            return;
+        }
+
+        // 2. Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // 3. Create user in MongoDB
+        const user = await (prisma as any).user.create({
+            data: {
+                name,
+                email,
+                password: hashedPassword,
+                branch,
+                role: role || 'Staff',
+                status: 'Active',
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                permissions: JSON.stringify({ "Inventory": "read", "Tasks": "read" }) // Default permissions
+            }
+        });
+
+        res.status(201).json({ message: 'User registered successfully', userId: user.id });
+
+    } catch (error) {
+        console.error('[Auth] Registration Error:', error);
+        res.status(500).json({ message: 'Error creating user' });
+    }
+};
+
+export const verifyUser = async (req: any, res: Response): Promise<void> => {
     try {
         const userId = req.user?.id;
-        if (userId) {
-            await prisma.user.update({
-                where: { id: userId },
-                data: { tokenVersion: { increment: 1 } }
-            });
+        if (!userId) {
+            res.status(401).json({ message: 'Unauthorized' });
+            return;
         }
-        res.json({ message: 'Logged out successfully' });
+
+        const user = await (prisma as any).user.findUnique({
+            where: { id: userId },
+            include: { modulePermissions: true }
+        });
+        if (!user) {
+            res.status(404).json({ message: 'User not found' });
+            return;
+        }
+
+        const { password, ...userData } = user;
+        res.json(userData);
+
     } catch (error) {
-        res.status(500).json({ message: 'Logout failed', error });
+        res.status(500).json({ message: 'Error verifying session' });
     }
+};
+
+export const logout = async (req: Request, res: Response): Promise<void> => {
+    res.json({ message: 'Logged out successfully' });
 };

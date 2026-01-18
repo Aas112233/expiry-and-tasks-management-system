@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, Scan, Calendar, Save, X, ArrowUpDown, AlertCircle, Trash2, Edit2, AlertTriangle, Package, Loader2, RefreshCw } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
-import { ExpiryStatus, ExpiredItem } from '../types';
+import { ExpiryStatus, ExpiredItem, Role } from '../types';
 import { useBranch } from '../BranchContext';
 import { useSearch } from '../SearchContext';
 import { inventoryService } from '../services/inventoryService';
-import { BRANCHES } from '../constants';
 import { useAuth } from '../AuthContext';
 
 export default function Inventory() {
   const location = useLocation();
-  const { selectedBranch } = useBranch();
+  const { selectedBranch, branches } = useBranch();
   const { searchQuery } = useSearch();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
 
   const [items, setItems] = useState<ExpiredItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,6 +28,7 @@ export default function Inventory() {
   // Modal State
   const [newItem, setNewItem] = useState<Partial<ExpiredItem>>({
     remainingQty: 0,
+    branch: user?.role !== Role.Admin ? (user?.branchId || '') : (selectedBranch !== 'All Branches' ? selectedBranch : (branches[0]?.name || 'Main Branch')),
     unitName: 'pcs',
     notes: ''
   });
@@ -95,7 +95,7 @@ export default function Inventory() {
         remainingQty: 0,
         unitName: 'pcs',
         notes: '',
-        branch: selectedBranch !== 'All Branches' ? selectedBranch : BRANCHES[0].name
+        branch: selectedBranch !== 'All Branches' ? selectedBranch : (branches[0]?.name || 'Main Branch')
       });
     }
     setValidationError(null);
@@ -241,7 +241,7 @@ export default function Inventory() {
                 disabled={selectedBranch !== 'All Branches'}
               >
                 <option>All Branches</option>
-                {BRANCHES.map(b => <option key={b.id}>{b.name}</option>)}
+                {branches.map(b => <option key={b.id}>{b.name}</option>)}
               </select>
               <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
@@ -459,13 +459,20 @@ export default function Inventory() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
                   <select
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white disabled:bg-gray-50 disabled:text-gray-500"
                     value={newItem.branch || ''}
                     onChange={e => setNewItem({ ...newItem, branch: e.target.value })}
                     required
+                    disabled={user?.role !== Role.Admin}
                   >
-                    <option value="" disabled>Select Branch</option>
-                    {BRANCHES.map(b => <option key={b.id}>{b.name}</option>)}
+                    {user?.role !== Role.Admin ? (
+                      <option value={user?.branchId}>{user?.branchId}</option>
+                    ) : (
+                      <>
+                        <option value="" disabled>Select Branch</option>
+                        {branches.map(b => <option key={b.id}>{b.name}</option>)}
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -496,8 +503,8 @@ export default function Inventory() {
                     required
                     min={newItem.mfgDate ? new Date(new Date(newItem.mfgDate).getTime() + 86400000).toISOString().split('T')[0] : ''} // Must be > Mfg
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/20 text-sm ${newItem.mfgDate && newItem.expDate && new Date(newItem.expDate) <= new Date(newItem.mfgDate)
-                        ? 'border-red-300 focus:border-red-500 bg-red-50'
-                        : 'border-gray-200 focus:border-blue-500'
+                      ? 'border-red-300 focus:border-red-500 bg-red-50'
+                      : 'border-gray-200 focus:border-blue-500'
                       }`}
                     value={newItem.expDate || ''}
                     onChange={e => {

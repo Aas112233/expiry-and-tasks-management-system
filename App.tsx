@@ -41,36 +41,43 @@ function PermissionRoute({ module, type = 'read', children }: { module: string, 
   return <>{children}</>;
 }
 
+import { ToastProvider } from './ToastContext';
+import ErrorBoundary from './components/ErrorBoundary';
+
 function App() {
   return (
-    <AuthProvider>
-      <BranchProvider>
-        <SearchProvider>
-          <HashRouter>
-            <Routes>
-              <Route path="/login" element={<Login />} />
+    <ErrorBoundary>
+      <ToastProvider>
+        <AuthProvider>
+          <BranchProvider>
+            <SearchProvider>
+              <HashRouter>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
 
-              <Route element={<ProtectedRoute />}>
-                <Route element={<Layout />}>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/expired-goods" element={<PermissionRoute module="Inventory"><ExpiredGoods /></PermissionRoute>} />
-                  <Route path="/employees" element={<PermissionRoute module="Employees"><Employees /></PermissionRoute>} />
-                  <Route path="/tasks" element={<PermissionRoute module="Tasks"><Tasks /></PermissionRoute>} />
-                  <Route path="/analysis" element={<Analysis />} />
-                  <Route path="/reports" element={<PermissionRoute module="Reports"><Reports /></PermissionRoute>} />
-                  <Route path="/users" element={<PermissionRoute module="Employees"><Users /></PermissionRoute>} />
-                  <Route path="/branches" element={<PermissionRoute module="Branches"><Branches /></PermissionRoute>} />
-                  <Route path="/settings" element={<PermissionRoute module="Settings"><Settings /></PermissionRoute>} />
-                </Route>
-              </Route>
+                  <Route element={<ProtectedRoute />}>
+                    <Route element={<Layout />}>
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/expired-goods" element={<PermissionRoute module="Inventory"><ExpiredGoods /></PermissionRoute>} />
+                      <Route path="/employees" element={<PermissionRoute module="Employees"><Employees /></PermissionRoute>} />
+                      <Route path="/tasks" element={<PermissionRoute module="Tasks"><Tasks /></PermissionRoute>} />
+                      <Route path="/analysis" element={<Analysis />} />
+                      <Route path="/reports" element={<PermissionRoute module="Reports"><Reports /></PermissionRoute>} />
+                      <Route path="/users" element={<PermissionRoute module="Employees"><Users /></PermissionRoute>} />
+                      <Route path="/branches" element={<PermissionRoute module="Branches"><Branches /></PermissionRoute>} />
+                      <Route path="/settings" element={<PermissionRoute module="Settings"><Settings /></PermissionRoute>} />
+                    </Route>
+                  </Route>
 
-              <Route path="/unauthorized" element={<NotAuthorized />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </HashRouter>
-        </SearchProvider>
-      </BranchProvider>
-    </AuthProvider>
+                  <Route path="/unauthorized" element={<NotAuthorized />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </HashRouter>
+            </SearchProvider>
+          </BranchProvider>
+        </AuthProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }
 
