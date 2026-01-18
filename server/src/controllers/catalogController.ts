@@ -28,6 +28,31 @@ export const getCatalogItemByBarcode = async (req: Request, res: Response): Prom
     }
 };
 
+export const getAllCatalogItems = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const items = await (prisma as any).productCatalog.findMany({
+            orderBy: { updatedAt: 'desc' }
+        });
+        res.json(items);
+    } catch (error: any) {
+        console.error('[Catalog] Fetch all error:', error);
+        res.status(500).json({ message: 'Error fetching catalog items', error: error.message });
+    }
+};
+
+export const deleteCatalogItem = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { id } = (req as any).params;
+        await (prisma as any).productCatalog.delete({
+            where: { id }
+        });
+        res.json({ message: 'Catalog item deleted successfully' });
+    } catch (error: any) {
+        console.error('[Catalog] Delete error:', error);
+        res.status(500).json({ message: 'Error deleting catalog item', error: error.message });
+    }
+};
+
 export const updateCatalogItem = async (barcode: string, productName: string, unit: string) => {
     try {
         // Check if this specific combination already exists

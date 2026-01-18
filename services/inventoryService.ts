@@ -15,15 +15,6 @@ class InventoryService {
         return items.map((item: any) => this.mapToFrontend(item));
     }
 
-    async getCatalogItemByBarcode(barcode: string): Promise<any> {
-        try {
-            return await apiFetch(`/catalog/${barcode}`);
-        } catch (error) {
-            // Return null if not found
-            return null;
-        }
-    }
-
     async createItem(itemData: Omit<ExpiredItem, 'id' | 'status'>): Promise<ExpiredItem> {
         // Calculate initial status
         const today = new Date();

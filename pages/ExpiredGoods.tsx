@@ -5,6 +5,7 @@ import { ExpiryStatus, ExpiredItem, Role } from '../types';
 import { useBranch } from '../BranchContext';
 import { useSearch } from '../SearchContext';
 import { inventoryService } from '../services/inventoryService';
+import { catalogService } from '../services/catalogService';
 import { useAuth } from '../AuthContext';
 
 export default function Inventory() {
@@ -111,7 +112,7 @@ export default function Inventory() {
     if (barcode.length >= 4) {
       setIsLookingUp(true);
       try {
-        const catalogItem = await inventoryService.getCatalogItemByBarcode(barcode);
+        const catalogItem = await catalogService.getByBarcode(barcode);
         if (catalogItem && !newItem.productName) { // Only auto-fill if the name is empty or we just scanned
           setNewItem(prev => ({
             ...prev,
@@ -447,18 +448,27 @@ export default function Inventory() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Barcode / SKU</label>
                   <div className="relative">
-                    <input
-                      type="text"
-                      className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono"
-                      placeholder="Scan or type..."
-                      value={newItem.barcode || ''}
-                      onChange={e => handleBarcodeChange(e.target.value)}
-                    />
-                    {isLookingUp ? (
-                      <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-500 w-4 h-4 animate-spin" />
-                    ) : (
-                      <Scan className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    )}
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono"
+                          placeholder="Scan or type..."
+                          value={newItem.barcode || ''}
+                          onChange={e => handleBarcodeChange(e.target.value)}
+                        />
+                        <Scan className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleBarcodeChange(newItem.barcode || '')}
+                        disabled={isLookingUp || !newItem.barcode}
+                        className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
+                        title="Sync from Catalog"
+                      >
+                        <RefreshCw className={`w-5 h-5 ${isLookingUp ? 'animate-spin' : ''}`} />
+                      </button>
+                    </div>
                   </div>
                 </div>
 

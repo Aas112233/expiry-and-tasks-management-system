@@ -11,6 +11,7 @@ import Branches from './pages/Branches';
 import Settings from './pages/Settings';
 import Reports from './pages/Reports';
 import Login from './pages/Login';
+import Catalog from './pages/Catalog';
 import { BranchProvider } from './BranchContext';
 import { SearchProvider } from './SearchContext';
 import { AuthProvider, useAuth } from './AuthContext';
@@ -59,6 +60,7 @@ function App() {
                     <Route element={<Layout />}>
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/expired-goods" element={<PermissionRoute module="Inventory"><ExpiredGoods /></PermissionRoute>} />
+                      <Route path="/catalog" element={<PermissionRoute module="Inventory"><Catalog /></PermissionRoute>} />
                       <Route path="/employees" element={<PermissionRoute module="Employees"><Employees /></PermissionRoute>} />
                       <Route path="/tasks" element={<PermissionRoute module="Tasks"><Tasks /></PermissionRoute>} />
                       <Route path="/analysis" element={<Analysis />} />

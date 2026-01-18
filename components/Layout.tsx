@@ -195,6 +195,7 @@ export default function Layout() {
           <SidebarGroup title="Dashboard" isCollapsed={isCollapsed}>
             <SidebarItem to="/" icon={LayoutDashboard} label="Overview" isCollapsed={isCollapsed} end={true} />
             <SidebarItem to="/expired-goods" icon={AlertTriangle} label="Expired Goods" isCollapsed={isCollapsed} />
+            <SidebarItem to="/catalog" icon={Database} label="Product Catalog" isCollapsed={isCollapsed} />
             <SidebarItem to="/analysis" icon={BarChart2} label="Analytics" isCollapsed={isCollapsed} />
             <SidebarItem to="/reports" icon={FileText} label="Reports" isCollapsed={isCollapsed} />
             <SidebarItem to="/tasks" icon={CheckSquare} label="My Tasks" isCollapsed={isCollapsed} />
