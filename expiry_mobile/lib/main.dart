@@ -14,6 +14,7 @@ import 'screens/calendar_screen.dart';
 import 'providers/tasks_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/settings_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/notification_service.dart';
 
 void main() async {
@@ -48,7 +49,8 @@ class MyApp extends StatelessWidget {
       // Define named routes for stability
       initialRoute: '/',
       routes: {
-        '/': (context) => const AuthChecker(),
+        '/': (context) => const SplashScreen(),
+        '/auth': (context) => const AuthChecker(),
         '/dashboard': (context) => const DashboardScreen(),
         '/inventory': (context) => const InventoryScreen(),
         '/add_item': (context) => const AddItemScreen(),
