@@ -121,6 +121,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } else {
       final expDate =
           DateTime.tryParse(item['expDate'] ?? '') ?? DateTime.now();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final expiry = DateTime(expDate.year, expDate.month, expDate.day);
+      final daysRemaining = expiry.difference(today).inDays;
+      final branch = item['branch'] ?? 'Main';
+
       return Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
@@ -129,7 +135,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
             borderRadius: BorderRadius.circular(15)),
         child: Row(
           children: [
-            const Icon(Icons.inventory_2_outlined, color: Colors.blueAccent),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: daysRemaining < 0
+                      ? Colors.redAccent.withValues(alpha: 0.1)
+                      : Colors.blueAccent.withValues(alpha: 0.1),
+                  shape: BoxShape.circle),
+              child: Icon(
+                  daysRemaining < 0
+                      ? Icons.error_outline
+                      : Icons.inventory_2_outlined,
+                  color:
+                      daysRemaining < 0 ? Colors.redAccent : Colors.blueAccent,
+                  size: 20),
+            ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -138,21 +158,83 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Text(item['productName'] ?? 'Unknown Item',
                         style: const TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold)),
-                    Text('Barcode: ${item['barcode'] ?? 'N/A'}',
-                        style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.3),
-                            fontSize: 11)),
-                    Text('Exp: ${DateFormat('dd MMM yyyy').format(expDate)}',
-                        style: TextStyle(
-                            color: expDate.isBefore(DateTime.now())
-                                ? Colors.redAccent
-                                : Colors.white38,
-                            fontSize: 12)),
+                    Row(
+                      children: [
+                        const Icon(Icons.store,
+                            color: Colors.white24, size: 12),
+                        const SizedBox(width: 4),
+                        Text(branch,
+                            style: const TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.qr_code,
+                            color: Colors.white24, size: 12),
+                        const SizedBox(width: 4),
+                        Text(item['barcode'] ?? 'N/A',
+                            style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                fontSize: 11)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(
+                            'Exp: ${DateFormat('dd MMM yyyy').format(expDate)}',
+                            style: TextStyle(
+                                color: daysRemaining < 0
+                                    ? Colors.redAccent
+                                    : Colors.white38,
+                                fontSize: 12)),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                              color: daysRemaining < 0
+                                  ? Colors.redAccent.withValues(alpha: 0.1)
+                                  : (daysRemaining <= 15
+                                      ? Colors.orangeAccent
+                                          .withValues(alpha: 0.1)
+                                      : Colors.greenAccent
+                                          .withValues(alpha: 0.1)),
+                              borderRadius: BorderRadius.circular(4)),
+                          child: Text(
+                            daysRemaining < 0
+                                ? 'EXPIRED'
+                                : (daysRemaining == 0
+                                    ? 'EXPIRES TODAY'
+                                    : '$daysRemaining days left'),
+                            style: TextStyle(
+                                color: daysRemaining < 0
+                                    ? Colors.redAccent
+                                    : (daysRemaining <= 15
+                                        ? Colors.orangeAccent
+                                        : Colors.greenAccent),
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
                   ]),
             ),
-            Text('qty: ${item['quantity']}',
-                style: const TextStyle(
-                    color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('${item['quantity']}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16)),
+                Text(item['unit'] ?? 'pcs',
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        fontSize: 10)),
+              ],
+            ),
           ],
         ),
       );
