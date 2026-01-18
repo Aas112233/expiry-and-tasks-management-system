@@ -16,6 +16,25 @@ const Catalog: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const handleSync = async () => {
+        if (!window.confirm('This will scan all inventory records and add missing barcodes to the catalog. Continue?')) {
+            return;
+        }
+
+        try {
+            setIsSyncing(true);
+            const result = await catalogService.syncWithInventory();
+            alert(`Sync complete! Added ${result.syncedCount} new product mappings to the catalog.`);
+            fetchCatalog();
+        } catch (error) {
+            console.error('Sync failed:', error);
+            alert('Failed to sync catalog with inventory.');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     const fetchCatalog = async () => {
         try {
@@ -64,14 +83,26 @@ const Catalog: React.FC = () => {
                     <p className="text-slate-400 mt-1">Manage global barcode mappings and auto-fill data.</p>
                 </div>
 
-                <button
-                    onClick={() => { setIsRefreshing(true); fetchCatalog(); }}
-                    disabled={isRefreshing}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 text-white rounded-xl border border-slate-700/50 transition-all disabled:opacity-50"
-                >
-                    <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    Refresh Catalog
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleSync}
+                        disabled={isSyncing}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 rounded-xl border border-blue-500/30 transition-all disabled:opacity-50"
+                        title="Search inventory for missing barcodes"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                        {isSyncing ? 'Syncing...' : 'Sync with Inventory'}
+                    </button>
+
+                    <button
+                        onClick={() => { setIsRefreshing(true); fetchCatalog(); }}
+                        disabled={isRefreshing}
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 text-white rounded-xl border border-slate-700/50 transition-all disabled:opacity-50"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                        Refresh Catalog
+                    </button>
+                </div>
             </div>
 
             {/* Stats Overview */}

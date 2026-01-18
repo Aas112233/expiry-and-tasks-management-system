@@ -27,6 +27,12 @@ class CatalogService {
             method: 'DELETE'
         });
     }
+
+    async syncWithInventory(): Promise<{ syncedCount: number, message: string }> {
+        return await apiFetch('/catalog/sync-inventory', {
+            method: 'POST'
+        });
+    }
 }
 
 export const catalogService = new CatalogService();

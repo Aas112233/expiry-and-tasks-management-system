@@ -74,3 +74,65 @@ export const updateCatalogItem = async (barcode: string, productName: string, un
         console.error('[Catalog] Auto-update error:', error);
     }
 };
+
+export const syncCatalogWithInventory = async (req: Request, res: Response): Promise<void> => {
+    try {
+        // 1. Fetch all unique barcode/productName/unit combinations from inventory
+        const inventoryItems = await (prisma as any).expiredItem.findMany({
+            where: {
+                AND: [
+                    { barcode: { not: null } },
+                    { barcode: { not: "" } }
+                ]
+            },
+            select: {
+                barcode: true,
+                productName: true,
+                unit: true
+            }
+        });
+
+        // 2. Fetch all existing catalog items
+        const catalogItems = await (prisma as any).productCatalog.findMany({
+            select: {
+                barcode: true,
+                productName: true,
+                unit: true
+            }
+        });
+
+        // 3. Find unique combinations in inventory not in catalog
+        const catalogSet = new Set(catalogItems.map((c: any) => `${c.barcode}|${c.productName}|${c.unit}`));
+
+        const newMappings = new Map<string, { barcode: string, productName: string, unit: string }>();
+
+        for (const item of inventoryItems) {
+            const key = `${item.barcode}|${item.productName}|${item.unit}`;
+            if (!catalogSet.has(key)) {
+                newMappings.set(key, {
+                    barcode: item.barcode,
+                    productName: item.productName,
+                    unit: item.unit
+                });
+            }
+        }
+
+        const itemsToCreate = Array.from(newMappings.values());
+
+        // 4. Create missing catalog entries
+        if (itemsToCreate.length > 0) {
+            await (prisma as any).productCatalog.createMany({
+                data: itemsToCreate
+            });
+        }
+
+        res.json({
+            message: 'Synchronization complete',
+            syncedCount: itemsToCreate.length,
+            totalInventoryItemsProcessed: inventoryItems.length
+        });
+    } catch (error: any) {
+        console.error('[Catalog] Sync error:', error);
+        res.status(500).json({ message: 'Error syncing with inventory', error: error.message });
+    }
+};
