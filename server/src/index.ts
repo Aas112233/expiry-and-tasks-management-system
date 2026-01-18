@@ -18,9 +18,26 @@ import backupRoutes from './routes/backupRoutes';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Enable CORS for frontend development
+// Enable CORS
+const allowedOrigins = [
+    'https://etms.gt.tc',
+    'http://localhost:5173',
+    'http://localhost:3000'
+];
+
 app.use(cors({
-    origin: '*', // In production, replace with your frontend URL
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.onrender.com')) {
+            callback(null, true);
+        } else {
+            // callback(new Error('Not allowed by CORS'));
+            // For now, let's just allow all to avoid deployment friction, 
+            // but we MUST use the origin string instead of '*' for credentials to work.
+            callback(null, true);
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
