@@ -12,8 +12,13 @@ import 'screens/reports_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'providers/tasks_provider.dart';
+import 'providers/settings_provider.dart';
+import 'screens/settings_screen.dart';
+import 'services/notification_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.initialize();
   runApp(
     MultiProvider(
       providers: [
@@ -21,6 +26,7 @@ void main() {
         ChangeNotifierProvider(create: (_) => InventoryProvider()),
         ChangeNotifierProvider(create: (_) => DashboardProvider()),
         ChangeNotifierProvider(create: (_) => TasksProvider()),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: const MyApp(),
     ),
@@ -50,6 +56,7 @@ class MyApp extends StatelessWidget {
         '/reports': (context) => const ReportsScreen(),
         '/tasks': (context) => const TasksScreen(),
         '/calendar': (context) => const CalendarScreen(),
+        '/settings': (context) => const SettingsScreen(),
       },
     );
   }

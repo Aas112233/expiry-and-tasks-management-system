@@ -89,6 +89,13 @@ class AppDrawer extends StatelessWidget {
             onTap: () => Navigator.pushNamedAndRemoveUntil(
                 context, '/reports', (r) => false),
           ),
+          _buildDrawerItem(
+            context,
+            icon: Icons.settings_outlined,
+            title: 'Settings',
+            onTap: () => Navigator.pushNamedAndRemoveUntil(
+                context, '/settings', (r) => false),
+          ),
           const Spacer(),
           const Divider(color: Colors.white10),
           _buildDrawerItem(
