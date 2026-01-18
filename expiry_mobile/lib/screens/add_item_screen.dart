@@ -26,12 +26,23 @@ class _AddItemScreenState extends State<AddItemScreen> {
   String _unit = 'pcs';
   bool _isSubmitting = false;
 
+  // Catalog lookup states
+  bool _isLookingUp = false;
+  String? _lastLookupBarcode;
+  bool _hasCatalogMatch = false;
+
   @override
   void initState() {
     super.initState();
-    _barcodeController.addListener(() {
-      _lookupItem(_barcodeController.text);
-    });
+    _barcodeController.addListener(_onBarcodeChanged);
+  }
+
+  void _onBarcodeChanged() {
+    final barcode = _barcodeController.text;
+    if (barcode == _lastLookupBarcode || barcode.length < 5) return;
+
+    _lastLookupBarcode = barcode;
+    _lookupItem(barcode);
   }
 
   @override
@@ -88,7 +99,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       'unit': _unit,
       'mfgDate': _mfgDate.toIso8601String(),
       'expDate': _expDate.toIso8601String(),
-      'branch': auth.userBranch, // Automatically use assigned branch
+      'branch': auth.userBranch,
       'notes': _notesController.text,
     };
 
@@ -109,6 +120,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
         setState(() {
           _mfgDate = DateTime.now();
           _expDate = DateTime.now().add(const Duration(days: 90));
+          _hasCatalogMatch = false;
+          _lastLookupBarcode = null;
         });
       }
     } catch (e) {
@@ -124,18 +137,39 @@ class _AddItemScreenState extends State<AddItemScreen> {
   }
 
   Future<void> _lookupItem(String barcode) async {
-    if (barcode.length < 4) return;
+    if (!mounted) return;
+    setState(() {
+      _isLookingUp = true;
+      _hasCatalogMatch = false;
+    });
 
-    final catalog =
-        await context.read<InventoryProvider>().lookupCatalog(barcode);
-    if (catalog != null && mounted) {
-      if (_nameController.text.isEmpty) {
-        _nameController.text = catalog['productName'] ?? '';
-      }
-      if (_unit == 'pcs') {
+    try {
+      final catalog =
+          await context.read<InventoryProvider>().lookupCatalog(barcode);
+      if (catalog != null && mounted) {
         setState(() {
-          _unit = catalog['unit'] ?? 'pcs';
+          if (_nameController.text.isEmpty) {
+            _nameController.text = catalog['productName'] ?? '';
+          }
+          _unit = catalog['unit'] ?? _unit;
+          _hasCatalogMatch = true;
         });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Product found: ${catalog['productName']}'),
+              duration: const Duration(seconds: 1),
+              backgroundColor: Colors.blueAccent.withValues(alpha: 0.8),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Catalog lookup failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLookingUp = false);
       }
     }
   }
@@ -219,7 +253,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       setState(() {
         _barcodeController.text = result;
       });
-      _lookupItem(result);
+      // Listener will trigger _lookupItem
     }
   }
 
@@ -251,15 +285,44 @@ class _AddItemScreenState extends State<AddItemScreen> {
               const SizedBox(height: 16),
               _buildTextField(
                 controller: _barcodeController,
-                label: 'Barcode',
+                label: 'Barcode / SKU',
                 icon: Icons.qr_code_scanner,
                 validator: (v) => v!.isEmpty ? 'Barcode is required' : null,
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.camera_alt_outlined,
-                      color: Colors.blueAccent),
-                  onPressed: _scanBarcode,
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isLookingUp)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8.0),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.blueAccent),
+                        ),
+                      ),
+                    if (_hasCatalogMatch)
+                      const Icon(Icons.check_circle,
+                          color: Colors.greenAccent, size: 20),
+                    IconButton(
+                      icon: const Icon(Icons.camera_alt_outlined,
+                          color: Colors.blueAccent),
+                      onPressed: _scanBarcode,
+                    ),
+                  ],
                 ),
               ),
+              if (_hasCatalogMatch)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, top: 4),
+                  child: Text(
+                    '✓ Product details auto-filled from catalog',
+                    style: TextStyle(
+                        color: Colors.greenAccent.withValues(alpha: 0.7),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
               const SizedBox(height: 16),
               Row(
                 children: [

@@ -28,6 +28,20 @@ class CatalogService {
         });
     }
 
+    async createItem(item: Omit<CatalogItem, 'id' | 'updatedAt' | 'createdAt'>): Promise<CatalogItem> {
+        return await apiFetch('/catalog', {
+            method: 'POST',
+            body: JSON.stringify(item)
+        });
+    }
+
+    async updateItem(id: string, item: Partial<CatalogItem>): Promise<CatalogItem> {
+        return await apiFetch(`/catalog/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(item)
+        });
+    }
+
     async syncWithInventory(): Promise<{ syncedCount: number, message: string }> {
         return await apiFetch('/catalog/sync-inventory', {
             method: 'POST'

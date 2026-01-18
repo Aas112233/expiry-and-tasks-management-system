@@ -53,6 +53,7 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/catalog', catalogRoutes);
+app.use('/api/branches', branchRoutes);
 
 import prisma, { withTransactionRetry, initializeDb, dbStatus } from './prisma';
 
