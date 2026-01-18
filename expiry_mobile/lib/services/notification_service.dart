@@ -29,6 +29,27 @@ class NotificationService {
         debugPrint('Notification tapped: ${response.payload}');
       },
     );
+
+    // Request permissions for Android 13+ and iOS
+    await requestPermissions();
+  }
+
+  static Future<void> requestPermissions() async {
+    // For Android 13+
+    await _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+
+    // For iOS
+    await _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
   }
 
   static Future<void> showNotification({
