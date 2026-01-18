@@ -14,11 +14,11 @@ interface AuthRequest extends Request {
  */
 
 export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
-    const authHeader = req.headers['authorization'];
+    const authHeader = (req as any).headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
-        console.warn(`[Auth Middleware] Missing token for ${req.method} ${req.originalUrl}`);
+        console.warn(`[Auth Middleware] Missing token for ${(req as any).method} ${(req as any).originalUrl}`);
         res.status(401).json({ message: 'Authentication required. Please log in.' });
         return;
     }

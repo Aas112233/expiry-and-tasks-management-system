@@ -38,7 +38,7 @@ app.use('/api/backup', backupRoutes);
 
 import prisma, { withTransactionRetry, initializeDb, dbStatus } from './prisma';
 
-app.get('/api/health', async (req, res) => {
+app.get('/api/health', async (req: any, res: any) => {
     try {
         if (dbStatus.isConnected) {
             // Triple check with a simple count for MongoDB
@@ -79,7 +79,7 @@ const clientBuildPath = path.join(__dirname, '../../dist');
 app.use(express.static(clientBuildPath));
 
 // Handle React routing, return all requests to React app
-app.get('*', (req, res) => {
+app.get('*', (req: any, res: any) => {
     res.sendFile(path.join(clientBuildPath, 'index.html'));
 });
 

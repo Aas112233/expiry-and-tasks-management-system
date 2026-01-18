@@ -1,0 +1,7 @@
+PORT=10000
+DATABASE_URL="mongodb+srv://admova1010_db_user:Ky0gOGWZDKrPsluS@cluster0.wxr4nxe.mongodb.net/expiry-system?retryWrites=true&w=majority"
+JWT_SECRET=supersecretkey123
+NODE_ENV=production
+NODE_TLS_REJECT_UNAUTHORIZED=0
+PRISMA_CLIENT_ENGINE_TYPE=library
+PRISMA_QUERY_ENGINE_TYPE=library
