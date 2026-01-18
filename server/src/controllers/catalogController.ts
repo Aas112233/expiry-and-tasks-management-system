@@ -78,7 +78,7 @@ export const updateCatalogItem = async (barcode: string, productName: string, un
 export const syncCatalogWithInventory = async (req: Request, res: Response): Promise<void> => {
     try {
         // 1. Fetch all unique barcode/productName/unit combinations from inventory
-        const inventoryItems = await (prisma as any).expiredItem.findMany({
+        const inventoryItems = await (prisma as any).inventoryItem.findMany({
             where: {
                 AND: [
                     { barcode: { not: null } },
