@@ -65,18 +65,19 @@ export const restoreBatch = async (req: Request, res: Response) => {
                     address: 'Restored from Backup'
                 }));
 
-                // Use createMany with skipDuplicates to ensure all branches exist
                 await withTransactionRetry(() =>
                     (prisma as any).branch.createMany({
                         data: branchData,
                         skipDuplicates: true
                     })
                 );
-                console.log(`[Backup] Branch synchronization phase completed.`);
             } catch (branchError: any) {
-                console.error('[Backup] Branch creation warning (non-fatal):', branchError.message);
+                console.error('[Backup] Branch creation warning:', branchError.message);
             }
         }
+
+        const dbCount = await (prisma as any).inventoryItem.count();
+        console.log(`[Backup] Current DB Item Count: ${dbCount}`);
 
         // 2. PHASE 2: PREPARE CONTENT CRITERIA & CALCULATE EXISTING DUPLICATES
         console.log(`[Backup] Processing ${products.length} products in current batch...`);
@@ -105,10 +106,6 @@ export const restoreBatch = async (req: Request, res: Response) => {
             return;
         }
 
-        const oldIdsInBatch = productsToProcess
-            .map((p: any) => p.id ? `Imported from backup. Old ID: ${p.id}` : null)
-            .filter((note): note is string => note !== null);
-
         // Content-based duplicate detection (Name, Barcode, Branch, ExpDate)
         // We normalize all dates to midnight of the day for consistency
         const orConditions: any[] = productsToProcess.map((p: any) => ({
@@ -120,26 +117,19 @@ export const restoreBatch = async (req: Request, res: Response) => {
             ]
         }));
 
-        // Add Old ID note check to the same query for efficiency
-        if (oldIdsInBatch.length > 0) {
-            orConditions.push({ notes: { in: oldIdsInBatch } });
-        }
-
         let existingHashes = new Set<string>();
-        let existingOldIds = new Set<string>();
 
         try {
             const existingItems: any[] = await withTransactionRetry(() =>
                 (prisma as any).inventoryItem.findMany({
                     where: { OR: orConditions },
-                    select: { productName: true, barcode: true, branch: true, expDate: true, notes: true }
+                    select: { productName: true, barcode: true, branch: true, expDate: true }
                 })
             );
 
-            console.log(`[Backup] Found ${existingItems.length} potential duplicates in DB.`);
+            console.log(`[Backup] Found ${existingItems.length} matching items in DB.`);
 
             existingItems.forEach(item => {
-                if (item.notes) existingOldIds.add(item.notes);
                 // Create a content hash for duplicate detection (Normalized Date)
                 const normalizedDate = new Date(item.expDate).setHours(0, 0, 0, 0);
                 const hash = `${String(item.productName).toLowerCase().trim()}|${item.barcode || ''}|${String(item.branch).toLowerCase().trim()}|${normalizedDate}`;
@@ -152,6 +142,7 @@ export const restoreBatch = async (req: Request, res: Response) => {
         // 3. PHASE 3: PREPARE VALID ITEMS
         const validItems: any[] = [];
         const seenInCurrentBatch = new Set<string>();
+        const skipDetails: string[] = [];
         let skipCount = 0;
 
         for (const product of productsToProcess) {
@@ -166,53 +157,53 @@ export const restoreBatch = async (req: Request, res: Response) => {
                 const branch = overrideBranch ? overrideBranch.trim() : String(product.branchName).substring(0, 100).trim();
                 const noteKey = product.id ? `Imported from backup. Old ID: ${product.id}` : null;
 
-                // Check if already in DB by Old ID
-                if (noteKey && existingOldIds.has(noteKey)) {
-                    console.log(`[Backup] Skipping duplicate (Old ID): ${productName}`);
-                    skipCount++;
-                    continue;
-                }
-
-                // Check if already in DB by Content (Name, Barcode, Branch, ExpDate)
+                // STRICT CONTENT-BASED DUPLICATE CHECK
+                // (Name, Barcode, Branch, and EXACT EXPIRY DATE must all match for it to be a duplicate)
                 const contentHash = `${productName.toLowerCase().trim()}|${barcode || ''}|${branch.toLowerCase().trim()}|${normalizedExpTimestamp}`;
+
+                // 1. Check if already in Database
                 if (existingHashes.has(contentHash)) {
-                    console.log(`[Backup] Skipping duplicate (Content Hash): ${productName} | Exp: ${normalizedExpDate.toISOString()}`);
+                    skipDetails.push(`"${productName}" (ID: ${product.id || 'N/A'}): Skipping (Identical item with same expiry already in database)`);
                     skipCount++;
                     continue;
                 }
 
-                // Check if duplicate within the same batch
+                // 2. Check if duplicated within this backup file (same batch)
                 if (seenInCurrentBatch.has(contentHash)) {
-                    console.log(`[Backup] Skipping duplicate (Batch Hash): ${productName}`);
+                    skipDetails.push(`"${productName}": Skipping (Same item/expiry appears multiple times in file)`);
                     skipCount++;
                     continue;
                 }
                 seenInCurrentBatch.add(contentHash);
 
+                // 3. Final validation of dates
                 if (isNaN(mfgDate.getTime()) || isNaN(expDate.getTime())) {
-                    console.log(`[Backup] Skipping item (Invalid Date): ${productName}`);
+                    skipDetails.push(`"${productName}": Skipping (Invalid date format)`);
                     skipCount++;
                     continue;
                 }
 
+                // If we reached here, it's a unique record (even if the date makes it unique)
                 validItems.push({
                     productName: productName,
                     barcode: barcode,
                     quantity: Math.max(0, Math.floor(Number(product.currentQuantity) || 0)),
                     unit: product.productType ? String(product.productType).substring(0, 50).trim() : 'pcs',
                     mfgDate: mfgDate,
-                    expDate: normalizedExpDate, // STORE NORMALIZED DATE
+                    expDate: normalizedExpDate,
                     branch: branch,
                     status: determineStatus(normalizedExpDate),
                     notes: noteKey ? noteKey.substring(0, 500) : null
                 });
+
             } catch (e) {
-                console.error(`[Backup] Error processing product ${product.productName}:`, e);
+                console.error(`[Backup] Error processing item:`, e);
+                skipDetails.push(`"${product.productName || 'Unknown'}": Processing Error`);
                 skipCount++;
             }
         }
 
-        console.log(`[Backup] Batch preparation final: ${validItems.length} valid, ${skipCount} skipped.`);
+        console.log(`[Backup] Batch result: ${validItems.length} valid, ${skipCount} skipped.`);
 
         // 4. PHASE 4: INSERT ITEMS
         if (validItems.length > 0) {
@@ -237,7 +228,8 @@ export const restoreBatch = async (req: Request, res: Response) => {
         res.status(200).json({
             success: true,
             imported: validItems.length,
-            skipped: products.length - validItems.length,
+            skipped: skipCount,
+            skipReasons: skipDetails,
             totalProcessed: products.length
         });
 

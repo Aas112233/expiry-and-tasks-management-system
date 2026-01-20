@@ -76,6 +76,10 @@ export default function Settings() {
                 const result = await response.json();
                 console.log(`[Frontend] Batch ${Math.floor(i / BATCH_SIZE) + 1} Result:`, result);
 
+                if (result.skipReasons && result.skipReasons.length > 0) {
+                    console.log(`[Frontend] Skip Reasons for Batch ${Math.floor(i / BATCH_SIZE) + 1}:`, result.skipReasons);
+                }
+
                 importedTotal += result.imported;
                 skippedTotal += result.skipped;
 
@@ -93,7 +97,11 @@ export default function Settings() {
 
         setRestoreProgress(100);
         setRestoreStatus('Restoration complete!');
-        showToast(`Successfully restored ${importedTotal} items.`, 'success');
+        if (skippedTotal > 0) {
+            showToast(`Restored ${importedTotal} items. ${skippedTotal} skipped (Check Console for reasons).`, 'success');
+        } else {
+            showToast(`Successfully restored ${importedTotal} items.`, 'success');
+        }
         setRestoreLoading(false);
         setRestoreFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
