@@ -135,6 +135,8 @@ class _AuthCheckerState extends State<AuthChecker> {
       );
     }
 
-    return auth.isAuthenticated ? const DashboardScreen() : const LoginScreen();
+    return auth.isAuthenticated
+        ? const LoginScreen(isAutoLogin: true)
+        : const LoginScreen();
   }
 }

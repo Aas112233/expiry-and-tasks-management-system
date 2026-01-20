@@ -61,12 +61,18 @@ class AuthProvider with ChangeNotifier {
       final token = response.data['token'];
       final user = response.data['user'];
 
-      await _storage.write(key: 'token', value: token);
-      await _storage.write(key: 'userName', value: user['name']);
-      await _storage.write(key: 'userRole', value: user['role']);
-      await _storage.write(key: 'userBranch', value: user['branch']);
-      await _storage.write(
-          key: 'lastLogin', value: DateTime.now().toIso8601String());
+      // Parallelize storage writes for better performance
+      await Future.wait([
+        _storage.write(key: 'token', value: token),
+        _storage.write(key: 'userName', value: user['name']),
+        _storage.write(key: 'userRole', value: user['role']),
+        _storage.write(key: 'userBranch', value: user['branch']),
+        _storage.write(
+            key: 'lastLogin', value: DateTime.now().toIso8601String()),
+      ]);
+
+      // Update ApiClient cache for immediate responsiveness
+      ApiClient.updateTokenCache(token);
 
       _isAuthenticated = true;
       _userName = user['name'];
@@ -82,6 +88,7 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> logout() async {
     await _storage.deleteAll();
+    ApiClient.updateTokenCache(null);
     _isAuthenticated = false;
     _userName = null;
     _userRole = null;

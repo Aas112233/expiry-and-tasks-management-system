@@ -45,15 +45,18 @@ class DashboardProvider with ChangeNotifier {
     }
 
     try {
-      final response = await _apiClient.dio.get('/analytics/overview');
-      _stats = response.data;
+      // Parallelize fetches for stats and trends to reduce total loading time
+      final results = await Future.wait([
+        _apiClient.dio.get('/analytics/overview'),
+        _apiClient.dio.get('/analytics/trends'),
+      ]);
+
+      _stats = results[0].data;
+      _trends = results[1].data;
 
       // Cache for offline
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('cached_dashboard_stats', jsonEncode(_stats));
-
-      final trendResponse = await _apiClient.dio.get('/analytics/trends');
-      _trends = trendResponse.data;
     } catch (e) {
       debugPrint('Dashboard fetch error: $e');
       await _loadCachedStats();

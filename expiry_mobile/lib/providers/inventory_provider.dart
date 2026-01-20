@@ -162,9 +162,25 @@ class InventoryProvider with ChangeNotifier {
 
     try {
       final response = await _apiClient.dio.get('/inventory');
-      _items = response.data;
+      final List<dynamic> rawData = response.data;
+
+      // Normalize API data to match App's internal structure
+      _items = rawData
+          .map((item) => {
+                'id': item['id'],
+                'productName': item['productName'],
+                'barcode': item['barcode'],
+                'remainingQty': item['quantity'],
+                'unitName': item['unit'],
+                'mfgDate': item['mfgDate'],
+                'expDate': item['expDate'],
+                'branch': item['branch'],
+                'notes': item['notes'],
+              })
+          .toList();
+
       // Mirror to local DB
-      await _db.replaceAllInventory(_items);
+      await _db.replaceAllInventory(rawData);
       _scheduleExpiryNotifications();
     } catch (e) {
       debugPrint('Fetch error: $e');
@@ -194,7 +210,7 @@ class InventoryProvider with ChangeNotifier {
   }
 
   Future<void> updateItem(String id, Map<String, dynamic> itemData) async {
-    await _db.addPendingAction('UPDATE', itemData, itemId: int.parse(id));
+    await _db.addPendingAction('UPDATE', itemData, itemId: id);
 
     // Update local UI
     final index = _items.indexWhere((i) => i['id'].toString() == id);
@@ -216,7 +232,7 @@ class InventoryProvider with ChangeNotifier {
   }
 
   Future<void> deleteItem(String id) async {
-    await _db.addPendingAction('DELETE', {}, itemId: int.parse(id));
+    await _db.addPendingAction('DELETE', {}, itemId: id);
 
     // Remove from UI
     _items.removeWhere((i) => i['id'].toString() == id);

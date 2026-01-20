@@ -20,7 +20,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -30,7 +30,7 @@ class DatabaseHelper {
     // Main Inventory Cache
     await db.execute('''
       CREATE TABLE inventory (
-        id INTEGER PRIMARY KEY,
+        id TEXT PRIMARY KEY,
         product_name TEXT,
         barcode TEXT,
         quantity INTEGER,
@@ -49,7 +49,7 @@ class DatabaseHelper {
       CREATE TABLE pending_sync (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         action_type TEXT, -- 'ADD', 'UPDATE', 'DELETE'
-        item_id INTEGER,  -- For UPDATE/DELETE
+        item_id TEXT,     -- For UPDATE/DELETE (Strings for MongoDB IDs)
         payload TEXT,     -- JSON representation of the item
         created_at TEXT
       )
@@ -80,8 +80,8 @@ class DatabaseHelper {
           'id': item['id'],
           'product_name': item['productName'],
           'barcode': item['barcode'],
-          'quantity': item['remainingQty'],
-          'unit': item['unitName'],
+          'quantity': item['quantity'],
+          'unit': item['unit'],
           'mfg_date': item['mfgDate'],
           'exp_date': item['expDate'],
           'branch': item['branch'],
@@ -100,7 +100,7 @@ class DatabaseHelper {
   // --- Sync Methods ---
 
   Future<void> addPendingAction(String type, Map<String, dynamic> payload,
-      {int? itemId}) async {
+      {String? itemId}) async {
     final db = await instance.database;
     await db.insert('pending_sync', {
       'action_type': type,

@@ -431,21 +431,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ],
                           ),
                           const SizedBox(height: 32),
-                          Text(
-                            'Recent Activity',
-                            style: TextStyle(
-                                color: isDark
-                                    ? Colors.white
-                                    : const Color(0xFF0F172A),
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Upcoming Expiry',
+                                style: TextStyle(
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF0F172A),
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                '(Next 15 Days)',
+                                style: TextStyle(
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.4)
+                                        : Colors.black45,
+                                    fontSize: 12),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 16),
-                          _buildActivityItem('System synchronized', 'Just now'),
-                          _buildActivityItem(
-                              'Branch data updated', '5 mins ago'),
-                          _buildActivityItem(
-                              'Live monitor active', '1 hour ago'),
+                          ...(() {
+                            final now = DateTime.now();
+                            final today =
+                                DateTime(now.year, now.month, now.day);
+
+                            final upcomingItems =
+                                inventoryProvider.items.where((item) {
+                              final expDate =
+                                  DateTime.tryParse(item['expDate'] ?? '') ??
+                                      DateTime.now();
+                              final daysRemaining =
+                                  expDate.difference(today).inDays;
+                              return daysRemaining <= 15;
+                            }).toList();
+
+                            // Sort: closest to expiry first
+                            upcomingItems.sort((a, b) {
+                              final dateA =
+                                  DateTime.tryParse(a['expDate'] ?? '') ??
+                                      DateTime.now();
+                              final dateB =
+                                  DateTime.tryParse(b['expDate'] ?? '') ??
+                                      DateTime.now();
+                              return dateA.compareTo(dateB);
+                            });
+
+                            if (upcomingItems.isEmpty) {
+                              return [
+                                Container(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 40),
+                                  width: double.infinity,
+                                  child: Center(
+                                    child: Column(
+                                      children: [
+                                        Icon(Icons.check_circle_outline,
+                                            size: 48,
+                                            color: isDark
+                                                ? Colors.white10
+                                                : Colors.black12),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                            'No items expiring in the next 15 days.',
+                                            style: TextStyle(
+                                                color: isDark
+                                                    ? Colors.white24
+                                                    : Colors.black26,
+                                                fontSize: 13)),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              ];
+                            }
+
+                            return upcomingItems
+                                .take(5)
+                                .map((item) => _buildUpcomingExpiryItem(item))
+                                .toList();
+                          })(),
                         ],
                       ),
                     ),
@@ -511,8 +579,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildActivityItem(String title, String time) {
+  Widget _buildUpcomingExpiryItem(dynamic item) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final expDate = DateTime.tryParse(item['expDate'] ?? '') ?? DateTime.now();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final daysRemaining = expDate.difference(today).inDays;
+
+    // Color coding: Red for <= 5 days (or expired), Orange/Yellow for 6-15 days
+    Color statusColor;
+    if (daysRemaining <= 5) {
+      statusColor = Colors.redAccent;
+    } else {
+      statusColor = Colors.orangeAccent;
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -523,8 +605,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.05)
-                : Colors.black.withValues(alpha: 0.05)),
+                ? statusColor.withValues(alpha: 0.1)
+                : statusColor.withValues(alpha: 0.05)),
         boxShadow: isDark
             ? []
             : [
@@ -540,22 +622,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha: 0.1),
+              color: statusColor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.notifications_outlined,
-                color: Colors.blueAccent, size: 20),
+            child: Icon(
+                daysRemaining < 0 ? Icons.warning_amber : Icons.event_note,
+                color: statusColor,
+                size: 20),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
+                Text(item['productName'] ?? 'Unknown Item',
                     style: TextStyle(
                         color: isDark ? Colors.white : const Color(0xFF0F172A),
-                        fontSize: 14)),
-                Text(time,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold)),
+                Text('Branch: ${item['branch'] ?? 'Main'}',
                     style: TextStyle(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.4)
@@ -563,6 +648,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         fontSize: 12)),
               ],
             ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                  daysRemaining < 0
+                      ? 'EXPIRED'
+                      : (daysRemaining == 0
+                          ? 'TODAY'
+                          : '${daysRemaining}d Left'),
+                  style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+              Text(DateFormat('dd MMM').format(expDate),
+                  style: TextStyle(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.3)
+                          : Colors.black38,
+                      fontSize: 11)),
+            ],
           ),
         ],
       ),
