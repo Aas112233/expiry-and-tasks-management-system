@@ -79,13 +79,23 @@ export const restoreBatch = async (req: Request, res: Response) => {
         }
 
         // 2. PHASE 2: PREPARE CONTENT CRITERIA & CALCULATE EXISTING DUPLICATES
-        const productsToProcess = products.filter((p: any) =>
-            p.productName &&
-            (overrideBranch || p.branchName) &&
-            !isNaN(new Date(p.expireDate).getTime())
-        );
+        console.log(`[Backup] Processing ${products.length} products in current batch...`);
+
+        const productsToProcess = products.filter((p: any) => {
+            const hasName = !!p.productName;
+            const hasBranch = !!(overrideBranch || p.branchName);
+            const hasValidExp = !isNaN(new Date(p.expireDate).getTime());
+
+            if (!hasName || !hasBranch || !hasValidExp) {
+                console.log(`[Backup] Skipping pre-filter item: ${p.productName || 'Unknown'} (Name: ${hasName}, Branch: ${hasBranch}, Exp: ${hasValidExp})`);
+            }
+            return hasName && hasBranch && hasValidExp;
+        });
+
+        console.log(`[Backup] Products after pre-filter: ${productsToProcess.length}/${products.length}`);
 
         if (productsToProcess.length === 0) {
+            console.log(`[Backup] Batch aborted: No valid products to process.`);
             res.status(200).json({
                 success: true,
                 imported: 0,
@@ -126,6 +136,8 @@ export const restoreBatch = async (req: Request, res: Response) => {
                 })
             );
 
+            console.log(`[Backup] Found ${existingItems.length} potential duplicates in DB.`);
+
             existingItems.forEach(item => {
                 if (item.notes) existingOldIds.add(item.notes);
                 // Create a content hash for duplicate detection (Normalized Date)
@@ -140,6 +152,7 @@ export const restoreBatch = async (req: Request, res: Response) => {
         // 3. PHASE 3: PREPARE VALID ITEMS
         const validItems: any[] = [];
         const seenInCurrentBatch = new Set<string>();
+        let skipCount = 0;
 
         for (const product of productsToProcess) {
             try {
@@ -154,17 +167,33 @@ export const restoreBatch = async (req: Request, res: Response) => {
                 const noteKey = product.id ? `Imported from backup. Old ID: ${product.id}` : null;
 
                 // Check if already in DB by Old ID
-                if (noteKey && existingOldIds.has(noteKey)) continue;
+                if (noteKey && existingOldIds.has(noteKey)) {
+                    console.log(`[Backup] Skipping duplicate (Old ID): ${productName}`);
+                    skipCount++;
+                    continue;
+                }
 
                 // Check if already in DB by Content (Name, Barcode, Branch, ExpDate)
                 const contentHash = `${productName.toLowerCase().trim()}|${barcode || ''}|${branch.toLowerCase().trim()}|${normalizedExpTimestamp}`;
-                if (existingHashes.has(contentHash)) continue;
+                if (existingHashes.has(contentHash)) {
+                    console.log(`[Backup] Skipping duplicate (Content Hash): ${productName} | Exp: ${normalizedExpDate.toISOString()}`);
+                    skipCount++;
+                    continue;
+                }
 
                 // Check if duplicate within the same batch
-                if (seenInCurrentBatch.has(contentHash)) continue;
+                if (seenInCurrentBatch.has(contentHash)) {
+                    console.log(`[Backup] Skipping duplicate (Batch Hash): ${productName}`);
+                    skipCount++;
+                    continue;
+                }
                 seenInCurrentBatch.add(contentHash);
 
-                if (isNaN(mfgDate.getTime()) || isNaN(expDate.getTime())) continue;
+                if (isNaN(mfgDate.getTime()) || isNaN(expDate.getTime())) {
+                    console.log(`[Backup] Skipping item (Invalid Date): ${productName}`);
+                    skipCount++;
+                    continue;
+                }
 
                 validItems.push({
                     productName: productName,
@@ -177,8 +206,13 @@ export const restoreBatch = async (req: Request, res: Response) => {
                     status: determineStatus(normalizedExpDate),
                     notes: noteKey ? noteKey.substring(0, 500) : null
                 });
-            } catch (e) { }
+            } catch (e) {
+                console.error(`[Backup] Error processing product ${product.productName}:`, e);
+                skipCount++;
+            }
         }
+
+        console.log(`[Backup] Batch preparation final: ${validItems.length} valid, ${skipCount} skipped.`);
 
         // 4. PHASE 4: INSERT ITEMS
         if (validItems.length > 0) {

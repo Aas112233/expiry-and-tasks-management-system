@@ -74,6 +74,8 @@ export default function Settings() {
                 if (!response.ok) throw new Error('Batch processing failed');
 
                 const result = await response.json();
+                console.log(`[Frontend] Batch ${Math.floor(i / BATCH_SIZE) + 1} Result:`, result);
+
                 importedTotal += result.imported;
                 skippedTotal += result.skipped;
 
