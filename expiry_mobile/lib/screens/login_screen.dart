@@ -188,10 +188,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 color:
                                     Colors.blueAccent.withValues(alpha: 0.2)),
                           ),
-                          child: Row(
+                          child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const SizedBox(
+                              SizedBox(
                                 width: 16,
                                 height: 16,
                                 child: CircularProgressIndicator(
@@ -199,7 +199,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   color: Colors.blueAccent,
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: 12),
                               Text(
                                 'Automatic Secure Login...',
                                 style: TextStyle(
