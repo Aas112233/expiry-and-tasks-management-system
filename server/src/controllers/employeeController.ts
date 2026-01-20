@@ -65,7 +65,8 @@ export const getAllEmployees = async (req: Request, res: Response): Promise<void
 
 export const createEmployee = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { name, email, role, branch, phone, employeeId, password, status, permissions } = req.body;
+        let { name, email, role, branch, phone, employeeId, password, status, permissions } = req.body;
+        email = email?.toLowerCase().trim();
 
         const existingUser = await withTransactionRetry(() =>
             prisma.user.findUnique({ where: { email } })
@@ -114,11 +115,13 @@ export const createEmployee = async (req: Request, res: Response): Promise<void>
 export const updateEmployee = async (req: Request, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
-        const { name, email, role, branch, status, permissions, phone, avatar } = req.body;
+        let { name, email, role, branch, status, permissions, phone, avatar } = req.body;
 
         const updateData: any = {};
         if (name !== undefined) updateData.name = name;
-        if (email !== undefined) updateData.email = email;
+        if (email !== undefined) {
+            updateData.email = email.toLowerCase().trim();
+        }
         if (role !== undefined) updateData.role = role;
         if (branch !== undefined) updateData.branch = branch;
         if (status !== undefined) updateData.status = status;

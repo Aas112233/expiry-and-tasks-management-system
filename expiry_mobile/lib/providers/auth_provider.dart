@@ -53,9 +53,10 @@ class AuthProvider with ChangeNotifier {
 
   Future<bool> login(String email, String password) async {
     try {
+      final normalizedEmail = email.trim().toLowerCase();
       final response = await _apiClient.dio.post(
         '/auth/login',
-        data: {'email': email, 'password': password},
+        data: {'email': normalizedEmail, 'password': password},
       );
 
       final token = response.data['token'];

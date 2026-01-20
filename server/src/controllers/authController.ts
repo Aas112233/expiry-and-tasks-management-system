@@ -12,7 +12,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey123';
 
 export const login = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { email, password } = req.body;
+        let { email, password } = req.body;
+        email = email?.toLowerCase().trim();
 
         if (!email || !password) {
             res.status(400).json({ message: 'Email and password are required' });
@@ -61,7 +62,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
 export const register = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { name, email, password, branch, role } = req.body;
+        let { name, email, password, branch, role } = req.body;
+        email = email?.toLowerCase().trim();
 
         if (!name || !email || !password || !branch) {
             res.status(400).json({ message: 'All fields are required' });
