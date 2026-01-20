@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/inventory_provider.dart';
 import '../providers/auth_provider.dart';
@@ -21,6 +22,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
   final _barcodeController = TextEditingController();
   final _quantityController = TextEditingController();
   final _notesController = TextEditingController();
+  final _nameFocusNode = FocusNode();
 
   DateTime _mfgDate = DateTime.now();
   DateTime _expDate = DateTime.now().add(const Duration(days: 90));
@@ -64,38 +66,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
     _barcodeController.dispose();
     _quantityController.dispose();
     _notesController.dispose();
+    _nameFocusNode.dispose();
     super.dispose();
-  }
-
-  Future<void> _selectDate(BuildContext context, bool isMfg) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: isMfg ? _mfgDate : _expDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2101),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Colors.blueAccent,
-              onPrimary: Colors.white,
-              surface: Color(0xFF1E293B),
-              onSurface: Colors.white,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      setState(() {
-        if (isMfg) {
-          _mfgDate = picked;
-        } else {
-          _expDate = picked;
-        }
-      });
-    }
   }
 
   Future<void> _submit() async {
@@ -279,6 +251,9 @@ class _AddItemScreenState extends State<AddItemScreen> {
             ),
             Expanded(
               child: MobileScanner(
+                controller: MobileScannerController(
+                  torchEnabled: true,
+                ),
                 onDetect: (capture) {
                   final List<Barcode> barcodes = capture.barcodes;
                   if (barcodes.isNotEmpty) {
@@ -307,7 +282,6 @@ class _AddItemScreenState extends State<AddItemScreen> {
       setState(() {
         _barcodeController.text = result;
       });
-      // Listener will trigger _lookupItem
     }
   }
 
@@ -330,11 +304,81 @@ class _AddItemScreenState extends State<AddItemScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildTextField(
-                controller: _nameController,
-                label: 'Product Name',
-                icon: Icons.shopping_basket_outlined,
-                validator: (v) => v!.isEmpty ? 'Name is required' : null,
+              LayoutBuilder(
+                builder: (context, constraints) => RawAutocomplete<String>(
+                  textEditingController: _nameController,
+                  focusNode: _nameFocusNode,
+                  optionsBuilder: (TextEditingValue textEditingValue) {
+                    final query = textEditingValue.text.trim().toLowerCase();
+                    if (query.isEmpty) {
+                      return const Iterable<String>.empty();
+                    }
+
+                    final provider = context.read<InventoryProvider>();
+                    // Combine inventory names with common terms
+                    final Set<String> allOptions = {
+                      ...provider.uniqueProductNames,
+                      ...InventoryProvider.commonInventoryTerms,
+                    };
+
+                    return allOptions.where((String option) {
+                      return option.toLowerCase().startsWith(query) ||
+                          option.toLowerCase().contains(query);
+                    }).take(10); // Limit to top 10 for performance
+                  },
+                  onSelected: (String selection) {
+                    _nameController.text = selection;
+                  },
+                  fieldViewBuilder:
+                      (context, controller, focusNode, onFieldSubmitted) {
+                    return _buildTextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      label: 'Product Name',
+                      icon: Icons.shopping_basket_outlined,
+                      validator: (v) => v!.isEmpty ? 'Name is required' : null,
+                    );
+                  },
+                  optionsViewBuilder: (context, onSelected, options) {
+                    return Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Container(
+                          width: constraints.maxWidth,
+                          height: 45,
+                          margin: const EdgeInsets.only(top: 4),
+                          child: ListView.builder(
+                            padding: EdgeInsets.zero,
+                            scrollDirection: Axis.horizontal,
+                            itemCount: options.length,
+                            itemBuilder: (BuildContext context, int index) {
+                              final String option = options.elementAt(index);
+                              return Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                child: ActionChip(
+                                  label: Text(option),
+                                  labelStyle: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  backgroundColor: const Color(0xFF1E293B),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                    side: const BorderSide(
+                                        color: Colors.blueAccent, width: 0.5),
+                                  ),
+                                  onPressed: () => onSelected(option),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 16),
               _buildTextField(
@@ -433,12 +477,11 @@ class _AddItemScreenState extends State<AddItemScreen> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _buildDateTile(
-                      'Mfg Date', _mfgDate, () => _selectDate(context, true)),
+                  _buildDateInput('Mfg Date', _mfgDate,
+                      (date) => setState(() => _mfgDate = date), false),
                   const SizedBox(width: 16),
-                  _buildDateTile(
-                      'Exp Date', _expDate, () => _selectDate(context, false),
-                      isExp: true),
+                  _buildDateInput('Exp Date', _expDate,
+                      (date) => setState(() => _expDate = date), true),
                 ],
               ),
               const SizedBox(height: 24),
@@ -482,17 +525,21 @@ class _AddItemScreenState extends State<AddItemScreen> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    FocusNode? focusNode,
     TextInputType? keyboardType,
     int maxLines = 1,
     String? Function(String?)? validator,
     Widget? suffixIcon,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return TextFormField(
       controller: controller,
+      focusNode: focusNode,
       style: const TextStyle(color: Colors.white),
       keyboardType: keyboardType,
       maxLines: maxLines,
       validator: validator,
+      inputFormatters: inputFormatters,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.white60),
@@ -513,36 +560,178 @@ class _AddItemScreenState extends State<AddItemScreen> {
     );
   }
 
-  Widget _buildDateTile(String label, DateTime date, VoidCallback onTap,
-      {bool isExp = false}) {
+  Widget _buildDateInput(String label, DateTime initialDate,
+      Function(DateTime) onDateChanged, bool isExp) {
+    // Note: We use a stateless controller here because the parent already holds the DateTime state.
+    // However, for manual input we need to handle the display separately if needed.
+    return _ManualDateInput(
+      label: label,
+      initialDate: initialDate,
+      onDateChanged: onDateChanged,
+      isExp: isExp,
+    );
+  }
+}
+
+class _ManualDateInput extends StatefulWidget {
+  final String label;
+  final DateTime initialDate;
+  final Function(DateTime) onDateChanged;
+  final bool isExp;
+
+  const _ManualDateInput({
+    required this.label,
+    required this.initialDate,
+    required this.onDateChanged,
+    required this.isExp,
+  });
+
+  @override
+  State<_ManualDateInput> createState() => _ManualDateInputState();
+}
+
+class _ManualDateInputState extends State<_ManualDateInput> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+        text: DateFormat('dd/MM/yyyy').format(widget.initialDate));
+  }
+
+  @override
+  void didUpdateWidget(_ManualDateInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialDate != oldWidget.initialDate) {
+      _controller.text = DateFormat('dd/MM/yyyy').format(widget.initialDate);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-                color: isExp
-                    ? Colors.orangeAccent.withValues(alpha: 0.3)
-                    : Colors.white10),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: const TextStyle(color: Colors.white60, fontSize: 12)),
-              const SizedBox(height: 4),
-              Text(
-                DateFormat('dd MMM yyyy').format(date),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(widget.label,
                 style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ],
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold)),
           ),
-        ),
+          TextFormField(
+            controller: _controller,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              DateTextFormatter(),
+            ],
+            onChanged: (value) {
+              if (value.length == 10) {
+                try {
+                  final date = DateFormat('dd/MM/yyyy').parseStrict(value);
+                  widget.onDateChanged(date);
+                } catch (e) {
+                  // Silent
+                }
+              }
+            },
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Required';
+              if (v.length < 10) return 'Use DD/MM/YYYY';
+              try {
+                final date = DateFormat('dd/MM/yyyy').parseStrict(v);
+                if (date.year < 2020 || date.year > 2100) return 'Invalid year';
+                return null;
+              } catch (e) {
+                return 'Invalid date';
+              }
+            },
+            decoration: InputDecoration(
+              hintText: 'DD/MM/YYYY',
+              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
+              filled: true,
+              fillColor: const Color(0xFF1E293B),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              isDense: true,
+              prefixIcon: Icon(Icons.calendar_today,
+                  size: 16,
+                  color:
+                      widget.isExp ? Colors.orangeAccent : Colors.blueAccent),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.edit_calendar,
+                    size: 20, color: Colors.white38),
+                onPressed: () async {
+                  final DateTime? picked = await showDatePicker(
+                    context: context,
+                    initialDate: widget.initialDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2101),
+                    builder: (context, child) => Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: const ColorScheme.dark(
+                            primary: Colors.blueAccent,
+                            surface: Color(0xFF1E293B)),
+                      ),
+                      child: child!,
+                    ),
+                  );
+                  if (picked != null) {
+                    _controller.text = DateFormat('dd/MM/yyyy').format(picked);
+                    widget.onDateChanged(picked);
+                  }
+                },
+              ),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none),
+              enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.white10)),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.blueAccent)),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class DateTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.length > 10) return oldValue;
+
+    var text = newValue.text;
+    if (newValue.selection.baseOffset < oldValue.selection.baseOffset) {
+      return newValue;
+    }
+
+    var out = '';
+    for (var i = 0; i < text.length; i++) {
+      out += text[i];
+      if ((i == 1 || i == 3) && text.length > i + 1 && text[i + 1] != '/') {
+        out += '/';
+      }
+    }
+
+    return oldValue.copyWith(
+      text: out,
+      selection: TextSelection.collapsed(offset: out.length),
     );
   }
 }

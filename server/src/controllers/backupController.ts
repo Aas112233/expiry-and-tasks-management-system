@@ -78,52 +78,104 @@ export const restoreBatch = async (req: Request, res: Response) => {
             }
         }
 
-        // 2. PHASE 2: CALCULATE DUPLICATES
-        const oldIdsInBatch = products
+        // 2. PHASE 2: PREPARE CONTENT CRITERIA & CALCULATE EXISTING DUPLICATES
+        const productsToProcess = products.filter((p: any) =>
+            p.productName &&
+            (overrideBranch || p.branchName) &&
+            !isNaN(new Date(p.expireDate).getTime())
+        );
+
+        if (productsToProcess.length === 0) {
+            res.status(200).json({
+                success: true,
+                imported: 0,
+                skipped: products.length,
+                totalProcessed: products.length
+            });
+            return;
+        }
+
+        const oldIdsInBatch = productsToProcess
             .map((p: any) => p.id ? `Imported from backup. Old ID: ${p.id}` : null)
             .filter((note): note is string => note !== null);
 
-        let existingOldIds = new Set<string>();
+        // Content-based duplicate detection (Name, Barcode, Branch, ExpDate)
+        // We normalize all dates to midnight of the day for consistency
+        const orConditions: any[] = productsToProcess.map((p: any) => ({
+            AND: [
+                { productName: String(p.productName).substring(0, 255).trim() },
+                { barcode: p.barcode ? String(p.barcode).substring(0, 100).trim() : null },
+                { branch: overrideBranch ? overrideBranch.trim() : String(p.branchName).substring(0, 100).trim() },
+                { expDate: new Date(new Date(p.expireDate).setHours(0, 0, 0, 0)) }
+            ]
+        }));
+
+        // Add Old ID note check to the same query for efficiency
         if (oldIdsInBatch.length > 0) {
-            try {
-                const existingItems: any[] = await withTransactionRetry(() =>
-                    (prisma as any).inventoryItem.findMany({
-                        where: { notes: { in: oldIdsInBatch } },
-                        select: { notes: true }
-                    })
-                );
-                existingItems.forEach(item => {
-                    if (item.notes) existingOldIds.add(item.notes);
-                });
-            } catch (queryError: any) {
-                console.error('[Backup] Duplicate check failure:', queryError.message);
-            }
+            orConditions.push({ notes: { in: oldIdsInBatch } });
+        }
+
+        let existingHashes = new Set<string>();
+        let existingOldIds = new Set<string>();
+
+        try {
+            const existingItems: any[] = await withTransactionRetry(() =>
+                (prisma as any).inventoryItem.findMany({
+                    where: { OR: orConditions },
+                    select: { productName: true, barcode: true, branch: true, expDate: true, notes: true }
+                })
+            );
+
+            existingItems.forEach(item => {
+                if (item.notes) existingOldIds.add(item.notes);
+                // Create a content hash for duplicate detection (Normalized Date)
+                const normalizedDate = new Date(item.expDate).setHours(0, 0, 0, 0);
+                const hash = `${String(item.productName).toLowerCase().trim()}|${item.barcode || ''}|${String(item.branch).toLowerCase().trim()}|${normalizedDate}`;
+                existingHashes.add(hash);
+            });
+        } catch (queryError: any) {
+            console.error('[Backup] Duplicate check failure:', queryError.message);
         }
 
         // 3. PHASE 3: PREPARE VALID ITEMS
         const validItems: any[] = [];
-        for (const product of products) {
-            if (!product.id || !product.productName || (!overrideBranch && !product.branchName)) continue;
+        const seenInCurrentBatch = new Set<string>();
 
-            const noteKey = `Imported from backup. Old ID: ${product.id}`;
-            if (existingOldIds.has(noteKey)) continue;
-
+        for (const product of productsToProcess) {
             try {
                 const mfgDate = new Date(product.mfgDate);
                 const expDate = new Date(product.expireDate);
+                const normalizedExpTimestamp = new Date(expDate).setHours(0, 0, 0, 0);
+                const normalizedExpDate = new Date(normalizedExpTimestamp);
+
+                const productName = String(product.productName).substring(0, 255).trim();
+                const barcode = product.barcode ? String(product.barcode).substring(0, 100).trim() : null;
+                const branch = overrideBranch ? overrideBranch.trim() : String(product.branchName).substring(0, 100).trim();
+                const noteKey = product.id ? `Imported from backup. Old ID: ${product.id}` : null;
+
+                // Check if already in DB by Old ID
+                if (noteKey && existingOldIds.has(noteKey)) continue;
+
+                // Check if already in DB by Content (Name, Barcode, Branch, ExpDate)
+                const contentHash = `${productName.toLowerCase().trim()}|${barcode || ''}|${branch.toLowerCase().trim()}|${normalizedExpTimestamp}`;
+                if (existingHashes.has(contentHash)) continue;
+
+                // Check if duplicate within the same batch
+                if (seenInCurrentBatch.has(contentHash)) continue;
+                seenInCurrentBatch.add(contentHash);
 
                 if (isNaN(mfgDate.getTime()) || isNaN(expDate.getTime())) continue;
 
                 validItems.push({
-                    productName: String(product.productName).substring(0, 255).trim(),
-                    barcode: product.barcode ? String(product.barcode).substring(0, 100).trim() : null,
+                    productName: productName,
+                    barcode: barcode,
                     quantity: Math.max(0, Math.floor(Number(product.currentQuantity) || 0)),
                     unit: product.productType ? String(product.productType).substring(0, 50).trim() : 'pcs',
                     mfgDate: mfgDate,
-                    expDate: expDate,
-                    branch: overrideBranch ? overrideBranch.trim() : String(product.branchName).substring(0, 100).trim(),
-                    status: determineStatus(expDate),
-                    notes: noteKey.substring(0, 500)
+                    expDate: normalizedExpDate, // STORE NORMALIZED DATE
+                    branch: branch,
+                    status: determineStatus(normalizedExpDate),
+                    notes: noteKey ? noteKey.substring(0, 500) : null
                 });
             } catch (e) { }
         }

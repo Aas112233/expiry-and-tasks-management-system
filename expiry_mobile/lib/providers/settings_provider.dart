@@ -6,10 +6,12 @@ class SettingsProvider with ChangeNotifier {
   bool _notificationsEnabled = true;
   int _alertThresholdDays = 15; // Alert if item expires within 15 days
   bool _taskNotifications = true;
+  ThemeMode _themeMode = ThemeMode.dark; // Default to dark as requested earlier
 
   bool get notificationsEnabled => _notificationsEnabled;
   int get alertThresholdDays => _alertThresholdDays;
   bool get taskNotifications => _taskNotifications;
+  ThemeMode get themeMode => _themeMode;
 
   SettingsProvider() {
     _loadSettings();
@@ -20,6 +22,24 @@ class SettingsProvider with ChangeNotifier {
     _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
     _alertThresholdDays = prefs.getInt('alert_threshold_days') ?? 15;
     _taskNotifications = prefs.getBool('task_notifications') ?? true;
+
+    final themeStr = prefs.getString('theme_mode') ?? 'dark';
+    _themeMode = themeStr == 'light'
+        ? ThemeMode.light
+        : themeStr == 'system'
+            ? ThemeMode.system
+            : ThemeMode.dark;
+
+    notifyListeners();
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    _themeMode = mode;
+    final prefs = await SharedPreferences.getInstance();
+    String themeStr = 'dark';
+    if (mode == ThemeMode.light) themeStr = 'light';
+    if (mode == ThemeMode.system) themeStr = 'system';
+    await prefs.setString('theme_mode', themeStr);
     notifyListeners();
   }
 

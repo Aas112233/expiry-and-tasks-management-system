@@ -3,10 +3,22 @@ import { apiFetch } from './apiConfig';
 
 class InventoryService {
     private mapToFrontend(item: any): ExpiredItem {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const exp = new Date(item.expDate);
+        const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+        let liveStatus = ExpiryStatus.Safe;
+        if (diffDays <= 0) liveStatus = ExpiryStatus.Expired;
+        else if (diffDays <= 15) liveStatus = ExpiryStatus.Critical;
+        else if (diffDays <= 45) liveStatus = ExpiryStatus.Warning;
+        else if (diffDays <= 60) liveStatus = ExpiryStatus.Good;
+
         return {
             ...item,
             remainingQty: item.quantity,
-            unitName: item.unit
+            unitName: item.unit,
+            status: liveStatus
         };
     }
 

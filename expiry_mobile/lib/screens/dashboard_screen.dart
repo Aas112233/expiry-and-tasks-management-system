@@ -6,6 +6,7 @@ import '../providers/dashboard_provider.dart';
 import '../providers/inventory_provider.dart';
 import '../providers/tasks_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -29,15 +30,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       {required String title,
       required List<dynamic> items,
       bool isTask = false}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.75,
-        decoration: const BoxDecoration(
-          color: Color(0xFF0F172A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: Column(
           children: [
@@ -46,7 +48,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: Colors.white24,
+                    color: isDark ? Colors.white24 : Colors.black12,
                     borderRadius: BorderRadius.circular(2))),
             Padding(
               padding: const EdgeInsets.all(20),
@@ -54,21 +56,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(title,
-                      style: const TextStyle(
-                          color: Colors.white,
+                      style: TextStyle(
+                          color:
+                              isDark ? Colors.white : const Color(0xFF0F172A),
                           fontSize: 20,
                           fontWeight: FontWeight.bold)),
                   IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close, color: Colors.white54)),
+                      icon: Icon(Icons.close,
+                          color: isDark ? Colors.white54 : Colors.black54)),
                 ],
               ),
             ),
             Expanded(
               child: items.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text('No entries found.',
-                          style: TextStyle(color: Colors.white54)))
+                          style: TextStyle(
+                              color: isDark ? Colors.white54 : Colors.black54)))
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: items.length,
@@ -85,14 +90,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildOverlayItem(dynamic item, bool isTask) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final itemBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+
     if (isTask) {
       final status = item['status'] ?? 'Open';
       return Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
-            borderRadius: BorderRadius.circular(15)),
+          color: itemBg,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+        ),
         child: Row(
           children: [
             Icon(status == 'Completed' ? Icons.check_circle : Icons.pending,
@@ -105,11 +124,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(item['title'] ?? 'Untitled Task',
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                        style: TextStyle(
+                            color: textColor, fontWeight: FontWeight.bold)),
                     Text(item['description'] ?? '',
                         style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.5)
+                                : Colors.black54,
                             fontSize: 12),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
@@ -131,8 +152,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
-            borderRadius: BorderRadius.circular(15)),
+          color: itemBg,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+        ),
         child: Row(
           children: [
             Container(
@@ -156,12 +187,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(item['productName'] ?? 'Unknown Item',
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                        style: TextStyle(
+                            color: textColor, fontWeight: FontWeight.bold)),
                     Row(
                       children: [
-                        const Icon(Icons.store,
-                            color: Colors.white24, size: 12),
+                        Icon(Icons.store,
+                            color: isDark ? Colors.white24 : Colors.black26,
+                            size: 12),
                         const SizedBox(width: 4),
                         Text(branch,
                             style: const TextStyle(
@@ -169,12 +201,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(width: 8),
-                        const Icon(Icons.qr_code,
-                            color: Colors.white24, size: 12),
+                        Icon(Icons.qr_code,
+                            color: isDark ? Colors.white24 : Colors.black26,
+                            size: 12),
                         const SizedBox(width: 4),
                         Text(item['barcode'] ?? 'N/A',
                             style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.3),
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.3)
+                                    : Colors.black45,
                                 fontSize: 11)),
                       ],
                     ),
@@ -186,7 +221,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             style: TextStyle(
                                 color: daysRemaining < 0
                                     ? Colors.redAccent
-                                    : Colors.white38,
+                                    : (isDark
+                                        ? Colors.white38
+                                        : Colors.black45),
                                 fontSize: 12)),
                         const SizedBox(width: 8),
                         Container(
@@ -203,10 +240,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               borderRadius: BorderRadius.circular(4)),
                           child: Text(
                             daysRemaining < 0
-                                ? 'EXPIRED'
+                                ? '${daysRemaining.abs()}d Overdue'
                                 : (daysRemaining == 0
-                                    ? 'EXPIRES TODAY'
-                                    : '$daysRemaining days left'),
+                                    ? 'Today'
+                                    : '${daysRemaining}d Left'),
                             style: TextStyle(
                                 color: daysRemaining < 0
                                     ? Colors.redAccent
@@ -217,6 +254,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 fontWeight: FontWeight.bold),
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        Text(
+                          daysRemaining < 0
+                              ? 'EXPIRED'
+                              : (daysRemaining <= 15
+                                  ? 'CRITICAL'
+                                  : (daysRemaining <= 45
+                                      ? 'WARNING'
+                                      : (daysRemaining <= 60
+                                          ? 'GOOD'
+                                          : 'SAFE'))),
+                          style: TextStyle(
+                            color: daysRemaining < 0
+                                ? Colors.redAccent.withValues(alpha: 0.7)
+                                : (daysRemaining <= 15
+                                    ? Colors.orangeAccent.withValues(alpha: 0.7)
+                                    : (isDark
+                                        ? Colors.white24
+                                        : Colors.black26)),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                   ]),
@@ -225,13 +285,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text('${item['quantity']}',
-                    style: const TextStyle(
-                        color: Colors.white,
+                    style: TextStyle(
+                        color: textColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 16)),
                 Text(item['unit'] ?? 'pcs',
                     style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.3),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.3)
+                            : Colors.black38,
                         fontSize: 10)),
               ],
             ),
@@ -243,6 +305,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final auth = context.watch<AuthProvider>();
     final dashProvider = context.watch<DashboardProvider>();
     final inventoryProvider = context.watch<InventoryProvider>();
@@ -257,13 +320,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Overview',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Overview'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -276,123 +334,153 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       drawer: const AppDrawer(),
-      body: dashProvider.isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.blueAccent))
-          : RefreshIndicator(
-              onRefresh: () async {
-                final dash = context.read<DashboardProvider>();
-                final inv = context.read<InventoryProvider>();
-                final tasks = context.read<TasksProvider>();
+      body: Column(
+        children: [
+          _buildConnectionStatusBar(inventoryProvider),
+          Expanded(
+            child: dashProvider.isLoading && stats.isEmpty
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.blueAccent))
+                : RefreshIndicator(
+                    onRefresh: () async {
+                      final dash = context.read<DashboardProvider>();
+                      final inv = context.read<InventoryProvider>();
+                      final tasks = context.read<TasksProvider>();
 
-                await dash.fetchDashboardStats();
-                if (!mounted) return;
-                await inv.fetchItems();
-                if (!mounted) return;
-                await tasks.fetchTasks();
-              },
-              color: Colors.blueAccent,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Welcome back,',
-                      style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.6),
-                          fontSize: 16),
+                      await dash.fetchDashboardStats();
+                      if (!mounted) return;
+                      await inv.fetchItems();
+                      if (!mounted) return;
+                      await tasks.fetchTasks();
+                    },
+                    color: Colors.blueAccent,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Welcome back,',
+                            style: TextStyle(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.6)
+                                    : Colors.black54,
+                                fontSize: 16),
+                          ),
+                          Text(
+                            '${auth.userName}!',
+                            style: TextStyle(
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF0F172A),
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 24),
+                          Row(
+                            children: [
+                              _buildKpiCard(
+                                'Total Inventory',
+                                getValue('Total Inventory'),
+                                Icons.inventory_2,
+                                Colors.blueAccent,
+                                onTap: () => _showOverlay(
+                                    title: 'Inventory Items',
+                                    items: inventoryProvider.items),
+                              ),
+                              const SizedBox(width: 16),
+                              _buildKpiCard(
+                                'Expiring Soon',
+                                getValue('Expiring Soon'),
+                                Icons.report_gmailerrorred,
+                                Colors.redAccent,
+                                onTap: () => _showOverlay(
+                                    title: 'Expiring Soon',
+                                    items: inventoryProvider.nearExpiryItems),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              _buildKpiCard(
+                                'Total Tasks',
+                                getValue('Total Tasks'),
+                                Icons.list_alt,
+                                Colors.purpleAccent,
+                                onTap: () => _showOverlay(
+                                    title: 'All Tasks',
+                                    items: tasksProvider.tasks,
+                                    isTask: true),
+                              ),
+                              const SizedBox(width: 16),
+                              _buildKpiCard(
+                                'Pending Tasks',
+                                getValue('Pending Tasks'),
+                                Icons.pending_actions,
+                                Colors.greenAccent,
+                                onTap: () => _showOverlay(
+                                    title: 'Pending Tasks',
+                                    items: tasksProvider.tasks
+                                        .where(
+                                            (t) => t['status'] != 'Completed')
+                                        .toList(),
+                                    isTask: true),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 32),
+                          Text(
+                            'Recent Activity',
+                            style: TextStyle(
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF0F172A),
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildActivityItem('System synchronized', 'Just now'),
+                          _buildActivityItem(
+                              'Branch data updated', '5 mins ago'),
+                          _buildActivityItem(
+                              'Live monitor active', '1 hour ago'),
+                        ],
+                      ),
                     ),
-                    Text(
-                      '${auth.userName}!',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        _buildKpiCard(
-                          'Total Inventory',
-                          getValue('Total Inventory'),
-                          Icons.inventory_2,
-                          Colors.blueAccent,
-                          onTap: () => _showOverlay(
-                              title: 'Inventory Items',
-                              items: inventoryProvider.items),
-                        ),
-                        const SizedBox(width: 16),
-                        _buildKpiCard(
-                          'Expiring Soon',
-                          getValue('Expiring Soon'),
-                          Icons.report_gmailerrorred,
-                          Colors.redAccent,
-                          onTap: () => _showOverlay(
-                              title: 'Expiring Soon',
-                              items: inventoryProvider.nearExpiryItems),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        _buildKpiCard(
-                          'Total Tasks',
-                          getValue('Total Tasks'),
-                          Icons.list_alt,
-                          Colors.purpleAccent,
-                          onTap: () => _showOverlay(
-                              title: 'All Tasks',
-                              items: tasksProvider.tasks,
-                              isTask: true),
-                        ),
-                        const SizedBox(width: 16),
-                        _buildKpiCard(
-                          'Pending Tasks',
-                          getValue('Pending Tasks'),
-                          Icons.pending_actions,
-                          Colors.greenAccent,
-                          onTap: () => _showOverlay(
-                              title: 'Pending Tasks',
-                              items: tasksProvider.tasks
-                                  .where((t) => t['status'] != 'Completed')
-                                  .toList(),
-                              isTask: true),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-                    const Text(
-                      'Recent Activity',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildActivityItem('System synchronized', 'Just now'),
-                    _buildActivityItem('Branch data updated', '5 mins ago'),
-                    _buildActivityItem('Live monitor active', '1 hour ago'),
-                  ],
-                ),
-              ),
-            ),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildKpiCard(String title, String value, IconData icon, Color color,
       {VoidCallback? onTap}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+            border: Border.all(
+                color: isDark
+                    ? color.withValues(alpha: 0.3)
+                    : color.withValues(alpha: 0.1),
+                width: 1),
+            boxShadow: isDark
+                ? []
+                : [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -401,8 +489,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 12),
               Text(
                 value,
-                style: const TextStyle(
-                    color: Colors.white,
+                style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
                     fontSize: 24,
                     fontWeight: FontWeight.bold),
               ),
@@ -411,7 +499,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.5)
+                        : Colors.black54,
+                    fontSize: 13),
               ),
             ],
           ),
@@ -421,12 +512,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildActivityItem(String title, String time) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B).withValues(alpha: 0.5),
+        color: isDark
+            ? const Color(0xFF1E293B).withValues(alpha: 0.5)
+            : Colors.white,
         borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.05)),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
       ),
       child: Row(
         children: [
@@ -445,10 +552,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: const TextStyle(color: Colors.white, fontSize: 14)),
+                    style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        fontSize: 14)),
                 Text(time,
                     style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.4),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.4)
+                            : Colors.black45,
                         fontSize: 12)),
               ],
             ),
@@ -457,5 +568,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-}
 
+  Widget _buildConnectionStatusBar(InventoryProvider provider) {
+    return StreamBuilder<List<ConnectivityResult>>(
+      stream: Connectivity().onConnectivityChanged,
+      builder: (context, snapshot) {
+        final results = snapshot.data ?? [];
+        final isOffline =
+            results.isEmpty || results.first == ConnectivityResult.none;
+        final isSyncing = provider.isSyncing;
+
+        if (!isOffline && !isSyncing) return const SizedBox.shrink();
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+          color: isOffline
+              ? Colors.orangeAccent.withValues(alpha: 0.9)
+              : Colors.blueAccent.withValues(alpha: 0.9),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isOffline ? Icons.wifi_off : Icons.sync,
+                size: 14,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isOffline
+                    ? 'Offline Mode - Working Locally'
+                    : 'Syncing data to server...',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}

@@ -25,14 +25,26 @@ class AuthProvider with ChangeNotifier {
     final name = await _storage.read(key: 'userName');
     final role = await _storage.read(key: 'userRole');
     final branch = await _storage.read(key: 'userBranch');
+    final lastLoginStr = await _storage.read(key: 'lastLogin');
 
     try {
-      if (token != null) {
-        _isAuthenticated = true;
-        _userName = name;
-        _userRole = role;
-        _userBranch = branch;
+      if (token != null && lastLoginStr != null) {
+        final lastLogin = DateTime.parse(lastLoginStr);
+        final now = DateTime.now();
+
+        // 24-Hour validity check
+        if (now.difference(lastLogin).inHours < 24) {
+          _isAuthenticated = true;
+          _userName = name;
+          _userRole = role;
+          _userBranch = branch;
+        } else {
+          // Session expired
+          await logout();
+        }
       }
+    } catch (e) {
+      debugPrint('Auth check error: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -53,6 +65,8 @@ class AuthProvider with ChangeNotifier {
       await _storage.write(key: 'userName', value: user['name']);
       await _storage.write(key: 'userRole', value: user['role']);
       await _storage.write(key: 'userBranch', value: user['branch']);
+      await _storage.write(
+          key: 'lastLogin', value: DateTime.now().toIso8601String());
 
       _isAuthenticated = true;
       _userName = user['name'];

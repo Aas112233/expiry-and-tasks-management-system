@@ -11,6 +11,7 @@ import 'screens/expired_list_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'screens/calendar_screen.dart';
+import 'screens/sync_screen.dart';
 import 'providers/tasks_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/settings_screen.dart';
@@ -45,11 +46,48 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+
     return MaterialApp(
       title: 'Expiry Manager',
       debugShowCheckedModeBanner: false,
+      themeMode: settings.themeMode,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
+        brightness: Brightness.light,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blueAccent,
+          brightness: Brightness.light,
+          surface: Colors.white,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: false,
+          titleTextStyle: TextStyle(
+              color: Color(0xFF0F172A),
+              fontSize: 20,
+              fontWeight: FontWeight.bold),
+          iconTheme: IconThemeData(color: Color(0xFF0F172A)),
+        ),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blueAccent,
+          brightness: Brightness.dark,
+          surface: const Color(0xFF1E293B),
+        ),
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: false,
+          titleTextStyle: TextStyle(
+              color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+          iconTheme: IconThemeData(color: Colors.white),
+        ),
         useMaterial3: true,
       ),
       home: const SplashScreen(),
@@ -64,6 +102,7 @@ class MyApp extends StatelessWidget {
         '/tasks': (context) => const TasksScreen(),
         '/calendar': (context) => const CalendarScreen(),
         '/settings': (context) => const SettingsScreen(),
+        '/sync': (context) => const SyncScreen(),
       },
     );
   }

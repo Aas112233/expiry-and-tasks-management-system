@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/inventory_provider.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -8,36 +10,48 @@ class AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
+    final inventoryProvider = context.watch<InventoryProvider>();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Drawer(
-      backgroundColor: const Color(0xFF0F172A), // Dark Navy
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       child: Column(
         children: [
           UserAccountsDrawerHeader(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+                colors: isDark
+                    ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+                    : [Colors.blueAccent, Colors.blue],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
             ),
             currentAccountPicture: CircleAvatar(
-              backgroundColor: Colors.blue.withValues(alpha: 0.2),
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
               child: Text(
                 authProvider.userName?.substring(0, 1).toUpperCase() ?? 'U',
                 style: const TextStyle(
-                    color: Colors.cyanAccent,
+                    color: Colors.white,
                     fontSize: 24,
                     fontWeight: FontWeight.bold),
               ),
             ),
-            accountName: Text(
-              authProvider.userName ?? 'User',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            accountName: Row(
+              children: [
+                Text(
+                  authProvider.userName ?? 'User',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                const SizedBox(width: 8),
+                _buildCloudIndicator(inventoryProvider),
+              ],
             ),
             accountEmail: Text(
               '${authProvider.userRole} | ${authProvider.userBranch}',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.9)),
             ),
           ),
           _buildDrawerItem(
@@ -91,6 +105,13 @@ class AppDrawer extends StatelessWidget {
           ),
           _buildDrawerItem(
             context,
+            icon: Icons.sync,
+            title: 'Cloud Sync',
+            onTap: () => Navigator.pushNamedAndRemoveUntil(
+                context, '/sync', (r) => false),
+          ),
+          _buildDrawerItem(
+            context,
             icon: Icons.settings_outlined,
             title: 'Settings',
             onTap: () => Navigator.pushNamedAndRemoveUntil(
@@ -139,6 +160,47 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
+  Widget _buildCloudIndicator(InventoryProvider inventoryProvider) {
+    return StreamBuilder<List<ConnectivityResult>>(
+      stream: Connectivity().onConnectivityChanged,
+      builder: (context, snapshot) {
+        final results = snapshot.data ?? [];
+        final isOffline =
+            results.isEmpty || results.first == ConnectivityResult.none;
+
+        return Stack(
+          alignment: Alignment.topRight,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 4, top: 4),
+              child: Icon(
+                isOffline ? Icons.cloud_off : Icons.cloud_done,
+                size: 20,
+                color: isOffline ? Colors.redAccent : Colors.greenAccent,
+              ),
+            ),
+            if (inventoryProvider.pendingCount > 0)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 8,
+                    minHeight: 8,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildDrawerItem(
     BuildContext context, {
     required IconData icon,
@@ -147,14 +209,17 @@ class AppDrawer extends StatelessWidget {
     Color? textColor,
     Color? iconColor,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final defaultColor = isDark ? Colors.white : const Color(0xFF0F172A);
+
     return ListTile(
-      leading: Icon(icon, color: iconColor ?? Colors.white70),
+      leading:
+          Icon(icon, color: iconColor ?? defaultColor.withValues(alpha: 0.7)),
       title: Text(
         title,
-        style: TextStyle(color: textColor ?? Colors.white, fontSize: 16),
+        style: TextStyle(color: textColor ?? defaultColor, fontSize: 16),
       ),
       onTap: onTap,
     );
   }
 }
-

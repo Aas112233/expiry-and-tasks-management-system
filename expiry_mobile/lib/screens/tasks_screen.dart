@@ -23,14 +23,13 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subTextColor = isDark ? Colors.white70 : Colors.black54;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Operational Tasks',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Operational Tasks'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -49,9 +48,9 @@ class _TasksScreenState extends State<TasksScreen> {
           final tasks = provider.tasks;
 
           if (tasks.isEmpty) {
-            return const Center(
+            return Center(
               child: Text('No tasks found.',
-                  style: TextStyle(color: Colors.white70)),
+                  style: TextStyle(color: subTextColor)),
             );
           }
 
@@ -67,10 +66,21 @@ class _TasksScreenState extends State<TasksScreen> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
+                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
                   borderRadius: BorderRadius.circular(15),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : Colors.black.withValues(alpha: 0.05)),
+                  boxShadow: isDark
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          )
+                        ],
                 ),
                 child: ListTile(
                   contentPadding:
@@ -90,8 +100,8 @@ class _TasksScreenState extends State<TasksScreen> {
                   ),
                   title: Text(
                     task['title'] ?? 'Untitled Task',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                        color: textColor, fontWeight: FontWeight.bold),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -100,7 +110,7 @@ class _TasksScreenState extends State<TasksScreen> {
                       Text(
                         task['description'] ?? 'No description provided.',
                         style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.6),
+                            color: subTextColor.withValues(alpha: 0.8),
                             fontSize: 13),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -108,13 +118,15 @@ class _TasksScreenState extends State<TasksScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Icon(Icons.calendar_today,
-                              color: Colors.white30, size: 12),
+                          Icon(Icons.calendar_today,
+                              color: isDark ? Colors.white30 : Colors.black26,
+                              size: 12),
                           const SizedBox(width: 4),
                           Text(
                             DateFormat('dd MMM yyyy').format(date),
-                            style: const TextStyle(
-                                color: Colors.white30, fontSize: 11),
+                            style: TextStyle(
+                                color: isDark ? Colors.white30 : Colors.black38,
+                                fontSize: 11),
                           ),
                           const Spacer(),
                           Container(
@@ -193,4 +205,3 @@ class _TasksScreenState extends State<TasksScreen> {
     );
   }
 }
-

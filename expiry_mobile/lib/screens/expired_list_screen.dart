@@ -71,14 +71,13 @@ class _ExpiredListScreenState extends State<ExpiredListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subTextColor = isDark ? Colors.white70 : Colors.black54;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Expired Items',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Expired Items'),
       ),
       drawer: const AppDrawer(),
       body: Consumer<InventoryProvider>(
@@ -90,15 +89,15 @@ class _ExpiredListScreenState extends State<ExpiredListScreen> {
                 child: CircularProgressIndicator(color: Colors.redAccent));
           }
           if (items.isEmpty) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.check_circle_outline,
+                  const Icon(Icons.check_circle_outline,
                       color: Colors.greenAccent, size: 64),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   Text('No expired items found!',
-                      style: TextStyle(color: Colors.white70, fontSize: 18)),
+                      style: TextStyle(color: subTextColor, fontSize: 18)),
                 ],
               ),
             );
@@ -114,10 +113,19 @@ class _ExpiredListScreenState extends State<ExpiredListScreen> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
+                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
                   borderRadius: BorderRadius.circular(15),
                   border: Border.all(
                       color: Colors.redAccent.withValues(alpha: 0.2)),
+                  boxShadow: isDark
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          )
+                        ],
                 ),
                 child: ListTile(
                   contentPadding:
@@ -133,8 +141,8 @@ class _ExpiredListScreenState extends State<ExpiredListScreen> {
                   ),
                   title: Text(
                     item['productName'] ?? 'Unknown Item',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                        color: textColor, fontWeight: FontWeight.bold),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,20 +151,41 @@ class _ExpiredListScreenState extends State<ExpiredListScreen> {
                       Text(
                         'Qty: ${item['quantity']} ${item['unit'] ?? 'pcs'}',
                         style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.6)),
+                            color: subTextColor.withValues(alpha: 0.8)),
                       ),
                       Text(
                         'Barcode: ${item['barcode'] ?? 'N/A'}',
                         style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.4),
+                            color: subTextColor.withValues(alpha: 0.6),
                             fontSize: 11),
                       ),
-                      Text(
-                        'Expired on: ${DateFormat('dd MMM yyyy').format(expDate)}',
-                        style: const TextStyle(
-                            color: Colors.redAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold),
+                      Row(
+                        children: [
+                          Text(
+                            'Expired on: ${DateFormat('dd MMM yyyy').format(expDate)}',
+                            style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${DateTime.now().difference(expDate).inDays}d Overdue',
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

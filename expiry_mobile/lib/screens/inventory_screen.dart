@@ -4,6 +4,8 @@ import '../providers/inventory_provider.dart';
 import '../widgets/app_drawer.dart';
 import 'add_item_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
@@ -14,8 +16,19 @@ class InventoryScreen extends StatefulWidget {
 
 class _InventoryScreenState extends State<InventoryScreen> {
   String _searchQuery = '';
-  String _sortBy = 'name'; // 'name', 'expiry', 'quantity'
+  String _sortBy = 'name'; // 'name', 'expiry', 'quantity', 'status'
   bool _isAscending = true;
+  String _selectedStatus = 'All';
+  final TextEditingController _searchController = TextEditingController();
+
+  final List<Map<String, String>> _statusBuckets = [
+    {'label': 'All Items', 'value': 'All'},
+    {'label': 'Expired', 'value': 'Expired'},
+    {'label': 'Critical (0-15d)', 'value': 'Critical'},
+    {'label': 'Warning (16-45d)', 'value': 'Warning'},
+    {'label': 'Good (46-60d)', 'value': 'Good'},
+    {'label': 'Safe (60+d)', 'value': 'Safe'},
+  ];
 
   @override
   void initState() {
@@ -27,11 +40,36 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   List<dynamic> _getProcessedItems(List<dynamic> items) {
     // Filter
+    // Filter by Query
     List<dynamic> filtered = items.where((item) {
       final query = _searchQuery.toLowerCase();
       final name = (item['productName'] ?? '').toString().toLowerCase();
       final barcode = (item['barcode'] ?? '').toString().toLowerCase();
-      return name.contains(query) || barcode.contains(query);
+      final matchesSearch = name.contains(query) || barcode.contains(query);
+
+      if (_selectedStatus == 'All') return matchesSearch;
+
+      final expDate =
+          DateTime.tryParse(item['expDate'] ?? '') ?? DateTime.now();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final expiry = DateTime(expDate.year, expDate.month, expDate.day);
+      final daysRemaining = expiry.difference(today).inDays;
+
+      bool matchesStatus = false;
+      if (_selectedStatus == 'Expired') {
+        matchesStatus = daysRemaining < 0;
+      } else if (_selectedStatus == 'Critical') {
+        matchesStatus = daysRemaining >= 0 && daysRemaining <= 15;
+      } else if (_selectedStatus == 'Warning') {
+        matchesStatus = daysRemaining > 15 && daysRemaining <= 45;
+      } else if (_selectedStatus == 'Good') {
+        matchesStatus = daysRemaining > 45 && daysRemaining <= 60;
+      } else if (_selectedStatus == 'Safe') {
+        matchesStatus = daysRemaining > 60;
+      }
+
+      return matchesSearch && matchesStatus;
     }).toList();
 
     // Sort
@@ -45,11 +83,94 @@ class _InventoryScreenState extends State<InventoryScreen> {
         result = dateA.compareTo(dateB);
       } else if (_sortBy == 'quantity') {
         result = (a['quantity'] ?? 0).compareTo(b['quantity'] ?? 0);
+      } else if (_sortBy == 'status') {
+        final dateA = DateTime.tryParse(a['expDate'] ?? '') ?? DateTime.now();
+        final dateB = DateTime.tryParse(b['expDate'] ?? '') ?? DateTime.now();
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+
+        final daysA = DateTime(dateA.year, dateA.month, dateA.day)
+            .difference(today)
+            .inDays;
+        final daysB = DateTime(dateB.year, dateB.month, dateB.day)
+            .difference(today)
+            .inDays;
+
+        result = daysA.compareTo(daysB);
       }
       return _isAscending ? result : -result;
     });
 
     return filtered;
+  }
+
+  Future<void> _scanBarcode() async {
+    final status = await Permission.camera.request();
+    if (status.isGranted) {
+      if (!mounted) return;
+      final scannedValue = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.black,
+        builder: (context) => SizedBox(
+          height: MediaQuery.of(context).size.height * 0.8,
+          child: Column(
+            children: [
+              AppBar(
+                backgroundColor: Colors.transparent,
+                title: const Text('Scan Search Item',
+                    style: TextStyle(color: Colors.white)),
+                leading: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+              Expanded(
+                child: MobileScanner(
+                  controller: MobileScannerController(
+                    torchEnabled: true,
+                  ),
+                  onDetect: (capture) {
+                    final List<Barcode> barcodes = capture.barcodes;
+                    if (barcodes.isNotEmpty) {
+                      final String? code = barcodes.first.rawValue;
+                      if (code != null) {
+                        Navigator.pop(context, code);
+                      }
+                    }
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Text(
+                  'Align barcode within the frame to search',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (scannedValue != null && mounted) {
+        setState(() {
+          _searchQuery = scannedValue;
+          _searchController.text = scannedValue;
+        });
+      }
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Camera permission is required to scan')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _showItemActions(BuildContext context, dynamic item) {
@@ -155,14 +276,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final subTextColor = isDark ? Colors.white70 : Colors.black54;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(
-        title: const Text('Inventory List',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Inventory List'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -170,7 +290,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.sort),
-            color: const Color(0xFF1E293B),
             onSelected: (value) {
               setState(() {
                 if (_sortBy == value) {
@@ -184,6 +303,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
             itemBuilder: (context) => [
               _buildSortItem('name', 'Name', Icons.sort_by_alpha),
               _buildSortItem('expiry', 'Expiry Date', Icons.event),
+              _buildSortItem('status', 'Status / Urgency', Icons.priority_high),
               _buildSortItem('quantity', 'Quantity', Icons.inventory),
             ],
           ),
@@ -202,15 +322,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: TextField(
+              controller: _searchController,
               onChanged: (value) => setState(() => _searchQuery = value),
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: textColor),
               decoration: InputDecoration(
                 hintText: 'Search items...',
                 hintStyle:
-                    TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+                    TextStyle(color: subTextColor.withValues(alpha: 0.5)),
                 prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.qr_code_scanner,
+                      color: Colors.blueAccent),
+                  onPressed: _scanBarcode,
+                ),
                 filled: true,
-                fillColor: const Color(0xFF1E293B),
+                fillColor: isDark
+                    ? const Color(0xFF1E293B)
+                    : Colors.black.withValues(alpha: 0.05),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                     borderSide: BorderSide.none),
@@ -218,6 +346,48 @@ class _InventoryScreenState extends State<InventoryScreen> {
               ),
             ),
           ),
+          SizedBox(
+            height: 40,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: _statusBuckets.length,
+              itemBuilder: (context, index) {
+                final bucket = _statusBuckets[index];
+                final isSelected = _selectedStatus == bucket['value'];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: FilterChip(
+                    label: Text(bucket['label']!),
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.white : subTextColor,
+                      fontSize: 12,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() => _selectedStatus = bucket['value']!);
+                    },
+                    selectedColor: Colors.blueAccent,
+                    backgroundColor: isDark
+                        ? const Color(0xFF1E293B)
+                        : Colors.black.withValues(alpha: 0.05),
+                    checkmarkColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(
+                        color: isSelected
+                            ? Colors.blueAccent
+                            : (isDark ? Colors.white12 : Colors.black12),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: Consumer<InventoryProvider>(
               builder: (context, provider, _) {
@@ -235,7 +405,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       _searchQuery.isEmpty
                           ? 'No items found.'
                           : 'No matching results.',
-                      style: const TextStyle(color: Colors.white70),
+                      style: TextStyle(color: subTextColor),
                     ),
                   );
                 }
@@ -257,10 +427,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B),
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
                         borderRadius: BorderRadius.circular(15),
-                        border:
-                            Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                        border: Border.all(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.black.withValues(alpha: 0.05)),
+                        boxShadow: isDark
+                            ? []
+                            : [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.05),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                )
+                              ],
                       ),
                       child: InkWell(
                         onLongPress: () => _showItemActions(context, item),
@@ -286,9 +467,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           ),
                           title: Text(
                             item['productName'] ?? 'Unknown Item',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                                color: textColor, fontWeight: FontWeight.bold),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -296,8 +476,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  const Icon(Icons.store,
-                                      color: Colors.white24, size: 12),
+                                  Icon(Icons.store,
+                                      color: isDark
+                                          ? Colors.white24
+                                          : Colors.black26,
+                                      size: 12),
                                   const SizedBox(width: 4),
                                   Text(
                                     branch,
@@ -307,14 +490,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                         fontWeight: FontWeight.bold),
                                   ),
                                   const SizedBox(width: 8),
-                                  const Icon(Icons.qr_code,
-                                      color: Colors.white24, size: 12),
+                                  Icon(Icons.qr_code,
+                                      color: isDark
+                                          ? Colors.white24
+                                          : Colors.black26,
+                                      size: 12),
                                   const SizedBox(width: 4),
                                   Text(
                                     item['barcode'] ?? 'N/A',
                                     style: TextStyle(
-                                        color:
-                                            Colors.white.withValues(alpha: 0.4),
+                                        color: isDark
+                                            ? Colors.white
+                                                .withValues(alpha: 0.4)
+                                            : Colors.black45,
                                         fontSize: 11),
                                   ),
                                 ],
@@ -327,7 +515,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                     style: TextStyle(
                                       color: daysRemaining < 0
                                           ? Colors.redAccent
-                                          : Colors.white38,
+                                          : (isDark
+                                              ? Colors.white38
+                                              : Colors.black45),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -347,10 +537,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                         borderRadius: BorderRadius.circular(4)),
                                     child: Text(
                                       daysRemaining < 0
-                                          ? 'EXPIRED'
+                                          ? '${daysRemaining.abs()}d Overdue'
                                           : (daysRemaining == 0
-                                              ? 'EXPIRES TODAY'
-                                              : '$daysRemaining days left'),
+                                              ? 'Today'
+                                              : '${daysRemaining}d Left'),
                                       style: TextStyle(
                                           color: daysRemaining < 0
                                               ? Colors.redAccent
@@ -359,6 +549,32 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                   : Colors.greenAccent),
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    daysRemaining < 0
+                                        ? 'EXPIRED'
+                                        : (daysRemaining <= 15
+                                            ? 'CRITICAL'
+                                            : (daysRemaining <= 45
+                                                ? 'WARNING'
+                                                : (daysRemaining <= 60
+                                                    ? 'GOOD'
+                                                    : 'SAFE'))),
+                                    style: TextStyle(
+                                      color: daysRemaining < 0
+                                          ? Colors.redAccent
+                                              .withValues(alpha: 0.7)
+                                          : (daysRemaining <= 15
+                                              ? Colors.orangeAccent
+                                                  .withValues(alpha: 0.7)
+                                              : (isDark
+                                                  ? Colors.white24
+                                                  : Colors.black26)),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
                                     ),
                                   ),
                                 ],
@@ -370,14 +586,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text('${item['quantity']}',
-                                  style: const TextStyle(
-                                      color: Colors.white,
+                                  style: TextStyle(
+                                      color: textColor,
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16)),
                               Text(item['unit'] ?? 'pcs',
                                   style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.3),
+                                      color: isDark
+                                          ? Colors.white.withValues(alpha: 0.3)
+                                          : Colors.black38,
                                       fontSize: 10)),
                             ],
                           ),

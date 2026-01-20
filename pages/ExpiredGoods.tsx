@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Scan, Calendar, Save, X, ArrowUpDown, AlertCircle, Trash2, Edit2, AlertTriangle, Package, Loader2, RefreshCw } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { Plus, Search, Filter, Scan, Calendar, Save, X, ArrowUpDown, AlertCircle, Trash2, Edit2, AlertTriangle, Package, Loader2, RefreshCw, FileSpreadsheet, Download } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { ExpiryStatus, ExpiredItem, Role } from '../types';
 import { useBranch } from '../BranchContext';
@@ -20,7 +21,7 @@ export default function Inventory() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [localBranchFilter, setLocalBranchFilter] = useState('All Branches');
-  const [sortConfig, setSortConfig] = useState<{ key: keyof ExpiredItem; direction: 'asc' | 'desc' } | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof ExpiredItem; direction: 'asc' | 'desc' } | null>({ key: 'status' as any, direction: 'asc' });
   const [validationError, setValidationError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -73,13 +74,21 @@ export default function Inventory() {
     }
   }, [location]);
 
+  const statusPriority: Record<string, number> = {
+    [ExpiryStatus.Expired]: 0,
+    [ExpiryStatus.Critical]: 1,
+    [ExpiryStatus.Warning]: 2,
+    [ExpiryStatus.Good]: 3,
+    [ExpiryStatus.Safe]: 4,
+  };
+
   const getStatusColor = (status: ExpiryStatus) => {
     switch (status) {
-      case ExpiryStatus.Expired: return 'bg-red-50 text-red-700 border-red-200 ring-red-500/20';
-      case ExpiryStatus.Critical: return 'bg-orange-50 text-orange-700 border-orange-200 ring-orange-500/20';
-      case ExpiryStatus.Warning: return 'bg-yellow-50 text-yellow-700 border-yellow-200 ring-yellow-500/20';
-      case ExpiryStatus.Good: return 'bg-blue-50 text-blue-700 border-blue-200 ring-blue-500/20';
-      default: return 'bg-green-50 text-green-700 border-green-200 ring-green-500/20';
+      case ExpiryStatus.Expired: return 'bg-red-500 text-white border-red-600 shadow-[0_0_10px_-3px_rgba(239,68,68,0.4)]';
+      case ExpiryStatus.Critical: return 'bg-orange-500 text-white border-orange-600 shadow-[0_0_10px_-3px_rgba(249,115,22,0.4)]';
+      case ExpiryStatus.Warning: return 'bg-amber-400 text-slate-900 border-amber-500 shadow-[0_0_10px_-3px_rgba(251,191,36,0.3)]';
+      case ExpiryStatus.Good: return 'bg-emerald-500 text-white border-emerald-600 shadow-[0_0_10px_-3px_rgba(16,185,129,0.4)]';
+      default: return 'bg-blue-500 text-white border-blue-600 shadow-[0_0_10px_-3px_rgba(59,130,246,0.4)]';
     }
   };
 
@@ -193,10 +202,92 @@ export default function Inventory() {
     setSortConfig({ key, direction });
   };
 
-  const filteredItems = items.filter(item => {
+  const handleExportExcel = () => {
+    try {
+      if (sortedItems.length === 0) {
+        alert("No data available to export.");
+        return;
+      }
+
+      console.log('Generating Safe Excel Stream (v1.2.5)...');
+
+      const exportData = sortedItems.map(item => ({
+        'ID': item.id,
+        'Product Name': item.productName,
+        'Barcode/SKU': item.barcode || 'N/A',
+        'Remaining Qty': item.remainingQty,
+        'Unit': item.unitName,
+        'Expiry Date': new Date(item.expDate).toLocaleDateString('en-GB'),
+        'Mfg Date': new Date(item.mfgDate).toLocaleDateString('en-GB'),
+        'Branch': item.branch,
+        'Status': (() => {
+          const d = (item as any).diffDays;
+          if (d < 0) return `${Math.abs(d)}d Overdue`;
+          if (d === 0) return 'Today';
+          return `${d}d Left`;
+        })(),
+        'Notes': item.notes || ''
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory Data");
+
+      const wscols = [
+        { wch: 20 }, { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
+        { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 40 }
+      ];
+      worksheet['!cols'] = wscols;
+
+      // Force high-compatibility binary generation
+      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'binary' });
+      function s2ab(s: string) {
+        const buf = new ArrayBuffer(s.length);
+        const view = new Uint8Array(buf);
+        for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+        return buf;
+      }
+
+      const blob = new Blob([s2ab(wbout)], { type: 'application/octet-stream' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "Inventory_Report.xlsx";
+      document.body.appendChild(a);
+      a.click();
+
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 100);
+
+      console.log('Export finalized.');
+    } catch (error) {
+      console.error('Excel Export Error:', error);
+      alert('Export failed. Please check console.');
+    }
+  };
+
+  const processedItems = items.map(item => {
+    // Dynamically calculate status for UI to avoid stale data issues
+    const exp = new Date(item.expDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    let liveStatus = ExpiryStatus.Safe;
+    if (diffDays <= 0) liveStatus = ExpiryStatus.Expired;
+    else if (diffDays <= 15) liveStatus = ExpiryStatus.Critical;
+    else if (diffDays <= 45) liveStatus = ExpiryStatus.Warning;
+    else if (diffDays <= 60) liveStatus = ExpiryStatus.Good;
+
+    return { ...item, status: liveStatus, diffDays };
+  });
+
+  const filteredItems = processedItems.filter(item => {
     const matchesSearch = item.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.barcode.includes(searchQuery) ||
-      item.id.includes(searchQuery); // Search by ID too
+      item.id.includes(searchQuery);
 
     const matchesStatus = filterStatus === 'All' ? true : item.status === filterStatus;
 
@@ -212,6 +303,14 @@ export default function Inventory() {
 
   const sortedItems = [...filteredItems].sort((a, b) => {
     if (!sortConfig) return 0;
+
+    // Handle priority sorting for Status
+    if (sortConfig.key === 'status') {
+      const aPriority = statusPriority[a.status] ?? 99;
+      const bPriority = statusPriority[b.status] ?? 99;
+      return sortConfig.direction === 'asc' ? aPriority - bPriority : bPriority - aPriority;
+    }
+
     const aValue = a[sortConfig.key];
     const bValue = b[sortConfig.key];
     if (aValue === undefined || bValue === undefined) return 0;
@@ -241,18 +340,27 @@ export default function Inventory() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Inventory Management</h1>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Inventory Management <span className="text-xs text-blue-500 font-mono">v1.2.5-STABLE</span></h1>
           <p className="text-gray-500 mt-1">Track stock levels, expiry dates, and product details.</p>
         </div>
-        {hasPermission('Inventory', 'write') && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <button
-            onClick={() => handleOpenModal()}
-            className="flex items-center px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all hover:-translate-y-0.5"
+            onClick={handleExportExcel}
+            className="flex items-center px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 shadow-sm transition-all hover:-translate-y-0.5"
           >
-            <Plus className="w-5 h-5 mr-2" />
-            Add Item
+            <FileSpreadsheet className="w-5 h-5 mr-2 text-emerald-600" />
+            Export Excel Report
           </button>
-        )}
+          {hasPermission('Inventory', 'write') && (
+            <button
+              onClick={() => handleOpenModal()}
+              className="flex items-center px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all hover:-translate-y-0.5"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Add Item
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Control Bar - Glassmorphism */}
@@ -323,8 +431,12 @@ export default function Inventory() {
                   <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('expDate')}>
                     Expiry <SortIcon columnKey="expDate" />
                   </th>
-                  <th className="px-6 py-4 font-semibold">Branch</th>
-                  <th className="px-6 py-4 font-semibold">Status</th>
+                  <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('branch')}>
+                    Branch <SortIcon columnKey="branch" />
+                  </th>
+                  <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('status')}>
+                    Status <SortIcon columnKey="status" />
+                  </th>
                   <th className="px-6 py-4 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
@@ -370,18 +482,23 @@ export default function Inventory() {
                       <td className="px-6 py-4 font-medium text-gray-900">{item.remainingQty}</td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col text-xs space-y-1">
-                          <span className="font-bold text-red-600">
+                          <span className="font-bold text-gray-900">
                             {new Date(item.expDate).toLocaleDateString('en-GB')}
                           </span>
-                          <span className="font-medium text-blue-600">
-                            Mfg: {new Date(item.mfgDate).toLocaleDateString('en-GB')}
+                          <span className={`font-black text-[10px] uppercase tracking-tighter ${item.status === ExpiryStatus.Expired ? 'text-red-600' : 'text-blue-500/70'}`}>
+                            {item.status}
                           </span>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-gray-500 text-xs">{item.branch}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ring-1 ring-inset ${getStatusColor(item.status)}`}>
-                          {item.status}
+                          {(() => {
+                            const d = (item as any).diffDays;
+                            if (d < 0) return `${Math.abs(d)}d Overdue`;
+                            if (d === 0) return 'Today';
+                            return `${d}d Left`;
+                          })()}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -613,7 +730,7 @@ export default function Inventory() {
       {/* Delete Confirmation Modal */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center border border-white/20">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-sm p-6 text-center border border-white/20">
             <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 ring-4 ring-red-50">
               <Trash2 className="w-6 h-6" />
             </div>
