@@ -12,6 +12,14 @@ server
 
 Vercel's Express support detects `src/index.ts` automatically. The app is now exported for Vercel, while local development still uses `app.listen()`.
 
+Use this Vercel build command:
+
+```text
+npm run build
+```
+
+The backend package now runs `prisma generate` during the build so Vercel gets a fresh Prisma Client on every deploy.
+
 ## Environment variables
 
 Add these in the Vercel project settings:
