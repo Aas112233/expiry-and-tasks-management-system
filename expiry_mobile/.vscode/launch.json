@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "name": "expiry_mobile (Flutter)",
+            "program": "lib/main.dart",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "expiry_mobile (Flutter Medium Phone API 36 2)",
+            "program": "lib/main.dart",
+            "request": "launch",
+            "type": "dart"
+        }
+    ]
+}

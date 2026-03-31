@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/auth_provider.dart';
 import '../providers/inventory_provider.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'sync_status_indicator.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -54,6 +55,7 @@ class AppDrawer extends StatelessWidget {
               style: TextStyle(color: Colors.white.withValues(alpha: 0.9)),
             ),
           ),
+          const SyncStatusIndicator(),
           _buildDrawerItem(
             context,
             icon: Icons.dashboard_outlined,
@@ -146,7 +148,7 @@ class AppDrawer extends StatelessWidget {
                         context.read<AuthProvider>().logout();
                         Navigator.pop(context); // Close dialog
                         Navigator.pushNamedAndRemoveUntil(
-                            context, '/', (route) => false);
+                            context, '/auth', (route) => false);
                       },
                     ),
                   ],
@@ -155,49 +157,53 @@ class AppDrawer extends StatelessWidget {
             },
           ),
           const SizedBox(height: 20),
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Text(
+              'Version 1.0.0+1',
+              style: TextStyle(
+                color: Colors.grey.withValues(alpha: 0.5),
+                fontSize: 12,
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildCloudIndicator(InventoryProvider inventoryProvider) {
-    return StreamBuilder<List<ConnectivityResult>>(
-      stream: Connectivity().onConnectivityChanged,
-      builder: (context, snapshot) {
-        final results = snapshot.data ?? [];
-        final isOffline =
-            results.isEmpty || results.first == ConnectivityResult.none;
+    final isOffline = !inventoryProvider.isOnline;
 
-        return Stack(
-          alignment: Alignment.topRight,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(right: 4, top: 4),
-              child: Icon(
-                isOffline ? Icons.cloud_off : Icons.cloud_done,
-                size: 20,
-                color: isOffline ? Colors.redAccent : Colors.greenAccent,
+    return Stack(
+      alignment: Alignment.topRight,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 4, top: 4),
+          child: Icon(
+            isOffline ? Icons.cloud_off : Icons.cloud_done,
+            size: 20,
+            color: isOffline ? Colors.redAccent : Colors.greenAccent,
+          ),
+        ),
+        if (inventoryProvider.pendingCount > 0)
+          Positioned(
+            right: 0,
+            top: 0,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(
+                minWidth: 8,
+                minHeight: 8,
               ),
             ),
-            if (inventoryProvider.pendingCount > 0)
-              Positioned(
-                right: 0,
-                top: 0,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 8,
-                    minHeight: 8,
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
+          ),
+      ],
     );
   }
 

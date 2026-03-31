@@ -82,7 +82,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         final dateB = DateTime.tryParse(b['expDate'] ?? '') ?? DateTime.now();
         result = dateA.compareTo(dateB);
       } else if (_sortBy == 'quantity') {
-        result = (a['quantity'] ?? 0).compareTo(b['quantity'] ?? 0);
+        result = (a['remainingQty'] ?? 0).compareTo(b['remainingQty'] ?? 0);
       } else if (_sortBy == 'status') {
         final dateA = DateTime.tryParse(a['expDate'] ?? '') ?? DateTime.now();
         final dateB = DateTime.tryParse(b['expDate'] ?? '') ?? DateTime.now();
@@ -530,10 +530,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                             ? Colors.redAccent
                                                 .withValues(alpha: 0.1)
                                             : (daysRemaining <= 15
-                                                ? Colors.orangeAccent
+                                                ? Colors.redAccent
                                                     .withValues(alpha: 0.1)
-                                                : Colors.greenAccent
-                                                    .withValues(alpha: 0.1)),
+                                                : (daysRemaining <= 45
+                                                    ? Colors.orangeAccent
+                                                        .withValues(alpha: 0.1)
+                                                    : Colors.greenAccent
+                                                        .withValues(
+                                                            alpha: 0.1))),
                                         borderRadius: BorderRadius.circular(4)),
                                     child: Text(
                                       daysRemaining < 0
@@ -545,8 +549,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                           color: daysRemaining < 0
                                               ? Colors.redAccent
                                               : (daysRemaining <= 15
-                                                  ? Colors.orangeAccent
-                                                  : Colors.greenAccent),
+                                                  ? Colors.redAccent
+                                                  : (daysRemaining <= 45
+                                                      ? Colors.orangeAccent
+                                                      : Colors.greenAccent)),
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold),
                                     ),
@@ -567,11 +573,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                           ? Colors.redAccent
                                               .withValues(alpha: 0.7)
                                           : (daysRemaining <= 15
-                                              ? Colors.orangeAccent
+                                              ? Colors.redAccent
                                                   .withValues(alpha: 0.7)
-                                              : (isDark
-                                                  ? Colors.white24
-                                                  : Colors.black26)),
+                                              : (daysRemaining <= 45
+                                                  ? Colors.orangeAccent
+                                                      .withValues(alpha: 0.7)
+                                                  : (isDark
+                                                      ? Colors.white24
+                                                      : Colors.black26))),
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
                                       letterSpacing: 0.5,
@@ -585,7 +594,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text('${item['quantity']}',
+                              Text('${item['remainingQty']}',
                                   style: TextStyle(
                                       color: textColor,
                                       fontWeight: FontWeight.bold,

@@ -6,7 +6,7 @@ import '../providers/dashboard_provider.dart';
 import '../providers/inventory_provider.dart';
 import '../providers/tasks_provider.dart';
 import 'package:intl/intl.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
+import '../widgets/connection_status.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -233,10 +233,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               color: daysRemaining < 0
                                   ? Colors.redAccent.withValues(alpha: 0.1)
                                   : (daysRemaining <= 15
-                                      ? Colors.orangeAccent
-                                          .withValues(alpha: 0.1)
-                                      : Colors.greenAccent
-                                          .withValues(alpha: 0.1)),
+                                      ? Colors.redAccent.withValues(alpha: 0.1)
+                                      : (daysRemaining <= 45
+                                          ? Colors.orangeAccent
+                                              .withValues(alpha: 0.1)
+                                          : Colors.greenAccent
+                                              .withValues(alpha: 0.1))),
                               borderRadius: BorderRadius.circular(4)),
                           child: Text(
                             daysRemaining < 0
@@ -248,8 +250,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 color: daysRemaining < 0
                                     ? Colors.redAccent
                                     : (daysRemaining <= 15
-                                        ? Colors.orangeAccent
-                                        : Colors.greenAccent),
+                                        ? Colors.redAccent
+                                        : (daysRemaining <= 45
+                                            ? Colors.orangeAccent
+                                            : Colors.greenAccent)),
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold),
                           ),
@@ -269,10 +273,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             color: daysRemaining < 0
                                 ? Colors.redAccent.withValues(alpha: 0.7)
                                 : (daysRemaining <= 15
-                                    ? Colors.orangeAccent.withValues(alpha: 0.7)
-                                    : (isDark
-                                        ? Colors.white24
-                                        : Colors.black26)),
+                                    ? Colors.redAccent.withValues(alpha: 0.7)
+                                    : (daysRemaining <= 45
+                                        ? Colors.orangeAccent
+                                            .withValues(alpha: 0.7)
+                                        : (isDark
+                                            ? Colors.white24
+                                            : Colors.black26))),
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                           ),
@@ -336,7 +343,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       drawer: const AppDrawer(),
       body: Column(
         children: [
-          _buildConnectionStatusBar(inventoryProvider),
+          ConnectionStatus(
+            message: inventoryProvider.errorMessage,
+            onRetry: () async {
+              final dash = context.read<DashboardProvider>();
+              final inv = context.read<InventoryProvider>();
+              final tasks = context.read<TasksProvider>();
+
+              await dash.fetchDashboardStats();
+              if (!mounted) return;
+              await inv.fetchItems();
+              if (!mounted) return;
+              await tasks.fetchTasks();
+            },
+          ),
           Expanded(
             child: dashProvider.isLoading && stats.isEmpty
                 ? const Center(
@@ -589,7 +609,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     // Color coding: Red for <= 5 days (or expired), Orange/Yellow for 6-15 days
     Color statusColor;
-    if (daysRemaining <= 5) {
+    if (daysRemaining <= 15) {
       statusColor = Colors.redAccent;
     } else {
       statusColor = Colors.orangeAccent;
@@ -672,50 +692,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildConnectionStatusBar(InventoryProvider provider) {
-    return StreamBuilder<List<ConnectivityResult>>(
-      stream: Connectivity().onConnectivityChanged,
-      builder: (context, snapshot) {
-        final results = snapshot.data ?? [];
-        final isOffline =
-            results.isEmpty || results.first == ConnectivityResult.none;
-        final isSyncing = provider.isSyncing;
-
-        if (!isOffline && !isSyncing) return const SizedBox.shrink();
-
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-          color: isOffline
-              ? Colors.orangeAccent.withValues(alpha: 0.9)
-              : Colors.blueAccent.withValues(alpha: 0.9),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isOffline ? Icons.wifi_off : Icons.sync,
-                size: 14,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isOffline
-                    ? 'Offline Mode - Working Locally'
-                    : 'Syncing data to server...',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

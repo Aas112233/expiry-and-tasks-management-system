@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Edit2, Lock, Trash2, Search, Filter, MoreVertical, X, Check, Loader2, Key, AlertTriangle } from 'lucide-react';
 import { User, Role } from '../types';
 import { userService } from '../services/userService';
@@ -298,8 +299,8 @@ export default function Users() {
             </div>
 
             {/* Modal - Glassmorphism Overlay */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            {isModalOpen && createPortal(
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-fade-in border border-white/20">
                         {/* Modal Header */}
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
@@ -472,12 +473,13 @@ export default function Users() {
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
             {/* Reset Password Modal */}
             {
-                isResetModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                isResetModalOpen && createPortal(
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
                         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-slide-up border border-white/20">
                             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                                 <h3 className="text-lg font-bold text-gray-900 flex items-center">
@@ -523,14 +525,15 @@ export default function Users() {
                                 </div>
                             </form>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )
             }
 
             {/* Delete Confirmation Modal */}
             {
-                isDeleteModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                isDeleteModalOpen && createPortal(
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
                         <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center border border-white/20 animate-scale-in">
                             <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 ring-4 ring-red-50">
                                 <AlertTriangle className="w-6 h-6" />
@@ -557,7 +560,8 @@ export default function Users() {
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )
             }
         </div >

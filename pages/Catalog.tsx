@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Package,
     Search,
@@ -347,8 +348,8 @@ const Catalog: React.FC = () => {
             </div>
 
             {/* Premium Add/Edit Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+            {isModalOpen && createPortal(
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
                     <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-xl overflow-hidden shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] animate-scale-in">
                         <div className="p-8 border-b border-white/5 bg-slate-800/20 flex justify-between items-center">
                             <div className="flex items-center gap-4">
@@ -452,7 +453,8 @@ const Catalog: React.FC = () => {
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Search, MoreVertical, Mail, Phone, Filter, Edit2, Trash2, UserPlus, Loader2, X, Check } from 'lucide-react';
 import { Employee, Role, User } from '../types';
 import { useBranch } from '../BranchContext';
@@ -288,9 +289,9 @@ export default function Employees() {
             </div>
 
             {/* Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white/20">
+            {isModalOpen && createPortal(
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white/20 animate-scale-in">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                             <h3 className="text-lg font-bold text-gray-900">
                                 {currentEmployee.id ? 'Edit Employee' : 'Add New Employee'}
@@ -449,7 +450,8 @@ export default function Employees() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

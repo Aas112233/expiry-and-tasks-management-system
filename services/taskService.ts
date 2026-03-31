@@ -1,33 +1,60 @@
 import { Task } from '../types';
-import { apiFetch } from './apiConfig';
+import { apiFetch, buildQueryString } from './apiConfig';
+
+export interface TaskQueryParams {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    priority?: string;
+    branch?: string;
+    assignedToId?: string;
+}
+
+export interface PaginatedTaskResponse {
+    tasks: Task[];
+    pagination: {
+        page: number;
+        limit: number;
+        totalCount: number;
+        totalPages: number;
+        hasNextPage: boolean;
+        hasPrevPage: boolean;
+    };
+}
 
 class TaskService {
-    private transformTask(t: any): Task {
+    private mapToFrontend(task: any): Task {
         return {
-            ...t,
-            assignedTo: t.assignedTo?.name || t.assigneeName || 'Unassigned'
+            ...task,
+            assignedTo: task.assignedToId || null,
         };
     }
 
-    async getAllTasks(): Promise<Task[]> {
-        const data = await apiFetch('/tasks');
-        return data.map((t: any) => this.transformTask(t));
+    async getAllTasks(params: TaskQueryParams = {}): Promise<PaginatedTaskResponse> {
+        const queryString = buildQueryString(params);
+        const response = await apiFetch<PaginatedTaskResponse>(`/tasks${queryString}`);
+
+        return {
+            ...response,
+            tasks: response.tasks.map((task: any) => this.mapToFrontend(task))
+        };
     }
 
-    async createTask(taskData: Omit<Task, 'id'>): Promise<Task> {
-        const data = await apiFetch('/tasks', {
+    async createTask(taskData: Partial<Task>): Promise<Task> {
+        const response = await apiFetch('/tasks', {
             method: 'POST',
             body: JSON.stringify(taskData)
         });
-        return this.transformTask(data);
+        return this.mapToFrontend(response);
     }
 
     async updateTask(id: string, updates: Partial<Task>): Promise<Task> {
-        const data = await apiFetch(`/tasks/${id}`, {
+        const response = await apiFetch(`/tasks/${id}`, {
             method: 'PUT',
             body: JSON.stringify(updates)
         });
-        return this.transformTask(data);
+        return this.mapToFrontend(response);
     }
 
     async deleteTask(id: string): Promise<boolean> {
@@ -35,6 +62,14 @@ class TaskService {
             method: 'DELETE'
         });
         return true;
+    }
+
+    async getTaskStats(): Promise<{
+        total: number;
+        byStatus: Record<string, number>;
+        byPriority: Record<string, number>;
+    }> {
+        return await apiFetch('/tasks/stats');
     }
 }
 

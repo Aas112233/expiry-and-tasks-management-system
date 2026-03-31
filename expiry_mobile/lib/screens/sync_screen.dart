@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import '../providers/inventory_provider.dart';
 import '../services/database_helper.dart';
 import '../widgets/app_drawer.dart';
@@ -55,7 +54,7 @@ class _SyncScreenState extends State<SyncScreen> {
       drawer: const AppDrawer(),
       body: Column(
         children: [
-          _buildConnectionHeader(),
+          _buildConnectionHeader(inventoryProvider),
           _buildSyncStatusCard(inventoryProvider),
           const Padding(
             padding: EdgeInsets.all(16.0),
@@ -90,43 +89,36 @@ class _SyncScreenState extends State<SyncScreen> {
     );
   }
 
-  Widget _buildConnectionHeader() {
-    return StreamBuilder<List<ConnectivityResult>>(
-      stream: Connectivity().onConnectivityChanged,
-      builder: (context, snapshot) {
-        final results = snapshot.data ?? [];
-        final isOffline =
-            results.isEmpty || results.first == ConnectivityResult.none;
+  Widget _buildConnectionHeader(InventoryProvider provider) {
+    final isOffline = !provider.isOnline;
 
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-          color: isOffline
-              ? Colors.redAccent.withValues(alpha: 0.1)
-              : Colors.greenAccent.withValues(alpha: 0.1),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isOffline ? Icons.cloud_off : Icons.cloud_done,
-                size: 16,
-                color: isOffline ? Colors.redAccent : Colors.greenAccent,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isOffline
-                    ? 'Offline - Server unreachable'
-                    : 'Online - Connected to Cloud',
-                style: TextStyle(
-                  color: isOffline ? Colors.redAccent : Colors.greenAccent,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      color: isOffline
+          ? Colors.redAccent.withValues(alpha: 0.1)
+          : Colors.greenAccent.withValues(alpha: 0.1),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            isOffline ? Icons.cloud_off : Icons.cloud_done,
+            size: 16,
+            color: isOffline ? Colors.redAccent : Colors.greenAccent,
           ),
-        );
-      },
+          const SizedBox(width: 8),
+          Text(
+            isOffline
+                ? 'Offline - ${provider.connectionMessage}'
+                : 'Online - Connected to Cloud',
+            style: TextStyle(
+              color: isOffline ? Colors.redAccent : Colors.greenAccent,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -159,17 +151,30 @@ class _SyncScreenState extends State<SyncScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  provider.isSyncing ? 'Synchronizing...' : 'Sync Status',
+                  provider.isSyncing
+                      ? 'Syncing ${provider.processedSyncItems} of ${provider.totalSyncItems}...'
+                      : 'Sync Status',
                   style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  '${_pendingActions.length} items waiting to upload',
+                  provider.isSyncing
+                      ? 'Please wait while we upload your data.'
+                      : '${_pendingActions.length} items waiting to upload',
                   style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.5), fontSize: 14),
                 ),
+                if (provider.syncError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(
+                      provider.syncError!,
+                      style: const TextStyle(
+                          color: Colors.redAccent, fontSize: 12),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -291,11 +296,24 @@ class _SyncScreenState extends State<SyncScreen> {
                   await _loadPendingActions();
                 },
           child: provider.isSyncing
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2),
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${provider.processedSyncItems}/${provider.totalSyncItems}',
+                      style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white),
+                    ),
+                  ],
                 )
               : const Text(
                   'Sync Now',

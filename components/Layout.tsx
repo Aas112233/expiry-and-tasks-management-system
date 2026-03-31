@@ -40,28 +40,28 @@ const SidebarItem = ({ to, icon: Icon, label, isCollapsed, end = false }: { to: 
       end={end}
       className={({ isActive }) =>
         `group flex items-center relative
-        ${isCollapsed ? 'justify-center px-2' : 'px-3.5'} 
-        py-2.5 rounded-xl transition-all duration-300 ease-in-out mb-1.5
+        ${isCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'px-4 w-full'} 
+        py-3 rounded-2xl transition-all duration-300 ease-out mb-2
         ${isActive
-          ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-          : 'text-gray-500 hover:bg-white hover:text-blue-600 hover:shadow-sm'
+          ? 'bg-primary-600 text-white shadow-lg shadow-primary-500/30 ring-1 ring-white/20'
+          : 'text-gray-500 hover:bg-white hover:text-primary-600 hover:shadow-md hover:-translate-y-0.5'
         }`
       }
     >
       {({ isActive }) => (
         <>
-          <Icon className={`w-5 h-5 flex-shrink-0 transition-transform duration-300 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`} />
+          <Icon className={`w-5 h-5 flex-shrink-0 transition-all duration-300 ${isActive ? 'scale-100' : 'group-hover:scale-110'}`} />
 
-          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isCollapsed ? 'w-0 opacity-0' : 'w-auto opacity-100 ml-3'}`}>
-            <span className="text-sm font-medium whitespace-nowrap">{label}</span>
-          </div>
+          {!isCollapsed && (
+            <div className="ml-3 overflow-hidden">
+              <span className="text-sm font-semibold tracking-wide">{label}</span>
+            </div>
+          )}
 
           {/* Tooltip for collapsed state */}
           {isCollapsed && (
-            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-xl">
+            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-2 bg-gray-900/90 backdrop-blur text-white text-xs font-semibold rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap z-50 shadow-xl translate-x-2 group-hover:translate-x-0">
               {label}
-              {/* Little arrow for tooltip */}
-              <div className="absolute top-1/2 -left-1 -translate-y-1/2 border-4 border-transparent border-r-gray-900"></div>
             </div>
           )}
         </>
@@ -71,14 +71,14 @@ const SidebarItem = ({ to, icon: Icon, label, isCollapsed, end = false }: { to: 
 };
 
 const SidebarGroup = ({ title, children, isCollapsed }: { title: string; children: React.ReactNode; isCollapsed: boolean }) => (
-  <div className="mb-6">
-    <div className={`px-4 mb-2 transition-all duration-300 ${isCollapsed ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 h-auto'}`}>
-      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">{title}</p>
-    </div>
-    {isCollapsed && (
-      <div className="h-px w-8 bg-gray-200 mx-auto mb-3" />
+  <div className="mb-8">
+    {!isCollapsed && (
+      <div className="px-4 mb-3 animate-fade-in-scale">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{title}</p>
+      </div>
     )}
-    <div className="space-y-0.5">
+    {isCollapsed && <div className="h-px w-6 bg-gray-200 mx-auto mb-4" />}
+    <div className="space-y-1">
       {children}
     </div>
   </div>
@@ -147,96 +147,99 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50 flex transition-colors duration-300">
-      {/* ... Sidebar code (omitted for brevity in replacement as it is unchanged) ... */}
-
+    <div className="min-h-screen bg-[#f8fafc] flex font-sans overflow-hidden">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-gray-900/50 z-40 lg:hidden backdrop-blur-sm transition-opacity duration-300"
+          className="fixed inset-0 bg-gray-900/60 z-40 lg:hidden backdrop-blur-sm transition-opacity duration-300"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Floating Sidebar */}
       <aside
         className={`
-          fixed top-0 left-0 z-50 h-full bg-white border-r border-gray-200 
-          transform transition-all duration-300 cubic-bezier(0.4, 0, 0.2, 1)
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          lg:static lg:translate-x-0 shadow-2xl lg:shadow-none
-          ${isCollapsed ? 'w-[88px]' : 'w-72'}
+          fixed lg:static top-0 left-0 z-50 h-full lg:h-screen p-4
+          transform transition-all duration-500 cubic-bezier(0.34, 1.56, 0.64, 1)
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           flex flex-col
+          ${isCollapsed ? 'w-24' : 'w-80'}
+          bg-[#f8fafc]
         `}
       >
-        {/* Sidebar Header */}
-        <div className={`h-20 flex items-center border-b border-gray-100 transition-all duration-300 ${isCollapsed ? 'justify-center px-0' : 'px-8'}`}>
-          <div className="flex items-center space-x-3 overflow-hidden">
-            <div className="w-9 h-9 flex-shrink-0 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
-              <span className="font-bold text-lg">E</span>
-            </div>
-            <div className={`transition-all duration-300 ${isCollapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
-              <h1 className="text-gray-900 font-bold text-lg leading-tight whitespace-nowrap">Expiry<span className="text-blue-600">Sys</span></h1>
-              <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Enterprise</p>
+        <div className="h-full glass-panel rounded-3xl flex flex-col overflow-hidden transition-all duration-300 relative">
+
+          {/* Toggle Button */}
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="absolute -right-3 top-20 z-50 hidden lg:flex items-center justify-center w-6 h-6 bg-white border border-gray-100 rounded-full text-gray-400 hover:text-primary-600 hover:border-primary-200 shadow-md transition-all duration-200 hover:scale-110"
+          >
+            {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          </button>
+
+          {/* Sidebar Header */}
+          <div className={`h-24 flex items-center transition-all duration-300 ${isCollapsed ? 'justify-center px-0' : 'px-8'}`}>
+            <div className="flex items-center space-x-3.5">
+              <div className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-primary-600 to-indigo-700 rounded-xl flex items-center justify-center text-white shadow-neon ring-2 ring-white/50">
+                <span className="font-display font-bold text-xl">E</span>
+              </div>
+              <div className={`transition-all duration-500 ${isCollapsed ? 'opacity-0 w-0 hidden' : 'opacity-100 w-auto'}`}>
+                <h1 className="text-gray-900 font-display font-bold text-xl leading-none">Expiry<span className="text-primary-600">Sys</span></h1>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Enterprise Edition</p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Toggle Button (Desktop) */}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-3 top-24 z-50 hidden lg:flex items-center justify-center w-6 h-6 bg-white border border-gray-200 rounded-full text-gray-500 hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all duration-200 hover:scale-110"
-        >
-          {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-        </button>
+          {/* Scrollable Nav */}
+          <nav className="flex-1 px-4 py-2 overflow-y-auto overflow-x-hidden custom-scrollbar space-y-8">
+            <SidebarGroup title="Dashboard" isCollapsed={isCollapsed}>
+              <SidebarItem to="/" icon={LayoutDashboard} label="Overview" isCollapsed={isCollapsed} end={true} />
+              <SidebarItem to="/expired-goods" icon={AlertTriangle} label="Expired Goods" isCollapsed={isCollapsed} />
+              <SidebarItem to="/catalog" icon={Database} label="Product Catalog" isCollapsed={isCollapsed} />
+              <SidebarItem to="/analysis" icon={BarChart2} label="Analytics" isCollapsed={isCollapsed} />
+              <SidebarItem to="/reports" icon={FileText} label="Reports" isCollapsed={isCollapsed} />
+              <SidebarItem to="/tasks" icon={CheckSquare} label="My Tasks" isCollapsed={isCollapsed} />
+            </SidebarGroup>
 
-        {/* Scrollable Nav */}
-        <nav className="flex-1 p-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
-          <SidebarGroup title="Dashboard" isCollapsed={isCollapsed}>
-            <SidebarItem to="/" icon={LayoutDashboard} label="Overview" isCollapsed={isCollapsed} end={true} />
-            <SidebarItem to="/expired-goods" icon={AlertTriangle} label="Expired Goods" isCollapsed={isCollapsed} />
-            <SidebarItem to="/catalog" icon={Database} label="Product Catalog" isCollapsed={isCollapsed} />
-            <SidebarItem to="/analysis" icon={BarChart2} label="Analytics" isCollapsed={isCollapsed} />
-            <SidebarItem to="/reports" icon={FileText} label="Reports" isCollapsed={isCollapsed} />
-            <SidebarItem to="/tasks" icon={CheckSquare} label="My Tasks" isCollapsed={isCollapsed} />
-          </SidebarGroup>
+            <SidebarGroup title="Management" isCollapsed={isCollapsed}>
+              <SidebarItem to="/employees" icon={Users} label="Employees" isCollapsed={isCollapsed} />
+              <SidebarItem to="/branches" icon={MapPin} label="Branches" isCollapsed={isCollapsed} />
+              <SidebarItem to="/users" icon={Users} label="Users" isCollapsed={isCollapsed} />
+            </SidebarGroup>
 
-          <SidebarGroup title="Management" isCollapsed={isCollapsed}>
-            <SidebarItem to="/employees" icon={Users} label="Employees" isCollapsed={isCollapsed} />
-            <SidebarItem to="/branches" icon={MapPin} label="Branches" isCollapsed={isCollapsed} />
-            <SidebarItem to="/users" icon={Users} label="Users" isCollapsed={isCollapsed} />
-          </SidebarGroup>
+            <SidebarGroup title="Configuration" isCollapsed={isCollapsed}>
+              <SidebarItem to="/settings" icon={Settings} label="Settings" isCollapsed={isCollapsed} />
+            </SidebarGroup>
+          </nav>
 
-          <SidebarGroup title="Configuration" isCollapsed={isCollapsed}>
-            <SidebarItem to="/settings" icon={Settings} label="Settings" isCollapsed={isCollapsed} />
-          </SidebarGroup>
-        </nav>
+          {/* Sidebar Footer */}
+          <div className="p-4 bg-gray-50/50 border-t border-gray-100/50">
+            <button className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'px-4'} py-3.5 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 text-primary-700 hover:from-primary-600 hover:to-indigo-600 hover:text-white transition-all duration-300 group relative shadow-sm hover:shadow-lg`}>
+              <LifeBuoy className="w-5 h-5 flex-shrink-0 transition-transform group-hover:rotate-12" />
+              {!isCollapsed && (
+                <span className="ml-3 text-sm font-bold transition-all duration-300">
+                  Help & Support
+                </span>
+              )}
 
-        {/* Sidebar Footer */}
-        <div className="p-4 border-t border-gray-100">
-          <button className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'px-4'} py-3 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors group relative`}>
-            <LifeBuoy className="w-5 h-5 flex-shrink-0" />
-            <span className={`ml-3 text-sm font-medium transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 overflow-hidden ml-0' : 'w-auto opacity-100'}`}>
-              Help & Support
-            </span>
-            {isCollapsed && (
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                Help & Support
-                <div className="absolute top-1/2 -left-1 -translate-y-1/2 border-4 border-transparent border-r-gray-900"></div>
-              </div>
-            )}
-          </button>
+              {isCollapsed && (
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-2 bg-gray-900 text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-xl">
+                  Help & Support
+                </div>
+              )}
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 bg-gray-50/50 transition-all duration-300">
-        {/* Header */}
-        <header className="h-20 bg-white/80 border-b border-gray-200 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30 shadow-sm backdrop-blur-md">
-          <div className="flex items-center flex-1 gap-6">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
+        {/* Floating Header */}
+        <header className="h-24 flex items-center justify-between px-8 z-30 flex-shrink-0">
+          <div className="flex items-center flex-1 gap-6 glass-panel px-6 py-3 rounded-2xl w-full mr-4">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg active:scale-95 transition-transform"
+              className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 rounded-xl active:scale-95 transition-transform"
             >
               <Menu className="w-6 h-6" />
             </button>
@@ -244,91 +247,94 @@ export default function Layout() {
             {/* Branch Selector */}
             <div className="hidden md:block relative w-64 group">
               <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-hover:text-primary-500 transition-colors" />
                 <select
                   id="global-branch-select"
                   name="globalBranch"
-                  className="w-full pl-9 pr-10 py-2.5 text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 rounded-xl bg-gray-50 hover:bg-white transition-all cursor-pointer appearance-none font-medium text-gray-700 shadow-sm"
+                  className="w-full pl-9 pr-10 py-2.5 text-sm font-medium text-gray-700 bg-transparent border-none focus:ring-0 cursor-pointer appearance-none hover:text-primary-600 transition-colors"
                   value={selectedBranch}
                   onChange={(e) => setSelectedBranch(e.target.value)}
                 >
                   <option>All Branches</option>
                   {branches.map(b => <option key={b.id}>{b.name}</option>)}
                 </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none group-hover:text-primary-500 transition-colors" />
               </div>
             </div>
+
+            <div className="h-6 w-px bg-gray-200 mx-2 hidden lg:block"></div>
 
             {/* Search */}
             <div className="relative flex-1 max-w-lg hidden lg:block group">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                <Search className="h-4 w-4 text-gray-400 group-focus-within:text-primary-500 transition-colors" />
               </div>
               <input
                 id="global-search"
                 name="globalSearch"
                 type="text"
-                className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 sm:text-sm transition-all duration-200 shadow-sm"
-                placeholder="Search items, tasks, or people..."
+                className="block w-full pl-10 pr-3 py-2 bg-transparent text-gray-700 placeholder-gray-400 focus:outline-none font-medium sm:text-sm transition-all"
+                placeholder="Search anything..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </div>
 
-          <div className="flex items-center space-x-4 lg:space-x-6">
-            <button
-              onClick={() => setShowStatusOverlay(true)}
-              className={`p-2 relative transition-colors rounded-lg flex items-center justify-center ${isConnected ? 'text-green-600 hover:bg-green-50' : 'text-red-500 hover:bg-red-50'
-                }`}
-              title="System Status"
-            >
-              {isConnected ? <Wifi className="w-6 h-6" /> : <WifiOff className="w-6 h-6" />}
-              <span className={`absolute top-2 right-2 flex h-2.5 w-2.5`}>
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></span>
-                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-              </span>
-            </button>
-            <button className="p-2 text-gray-400 hover:text-blue-600 relative transition-colors hover:bg-blue-50 rounded-lg">
-              <Bell className="w-6 h-6" />
-              <span className="absolute top-2 right-2.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white animate-pulse"></span>
-            </button>
+          <div className="flex items-center gap-4">
+            <div className="glass-panel p-1.5 rounded-xl flex items-center gap-2">
+              <button
+                onClick={() => setShowStatusOverlay(true)}
+                className={`p-2.5 relative transition-all rounded-lg flex items-center justify-center active:scale-95 ${isConnected ? 'text-emerald-600 hover:bg-emerald-50' : 'text-rose-500 hover:bg-rose-50'
+                  }`}
+                title="System Status"
+              >
+                {isConnected ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
+                <span className={`absolute top-2.5 right-2.5 flex h-2 w-2`}>
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isConnected ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                </span>
+              </button>
+              <button className="p-2.5 text-gray-400 hover:text-primary-600 relative transition-all hover:bg-primary-50 rounded-lg active:scale-95">
+                <Bell className="w-5 h-5" />
+                <span className="absolute top-2.5 right-3 block h-1.5 w-1.5 rounded-full bg-rose-500 ring-2 ring-white animate-pulse"></span>
+              </button>
+            </div>
 
-            <div className="h-8 w-px bg-gray-200"></div>
-
-            <div className="flex items-center space-x-3 cursor-pointer group relative">
+            <div className="flex items-center pl-2 cursor-pointer group relative">
               <div className="relative">
-                <img
-                  className="h-10 w-10 rounded-full object-cover border-2 border-white shadow-md transition-transform group-hover:scale-105"
-                  src={`https://ui-avatars.com/api/?name=${user?.name || 'User'}&background=random`}
-                  alt="User"
-                />
-                <div className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-2 ring-white"></div>
-              </div>
-              <div className="hidden md:flex flex-col text-right">
-                <span className="text-sm font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{user?.name || 'Guest User'}</span>
-                <span className="text-xs text-gray-500 font-medium">{user?.role || 'Viewer'}</span>
+                <div className="p-0.5 rounded-full bg-gradient-to-tr from-primary-500 to-indigo-500 shadow-lg shadow-primary-500/30">
+                  <img
+                    className="h-11 w-11 rounded-full object-cover border-2 border-white transition-transform duration-300 group-hover:scale-105"
+                    src={`https://ui-avatars.com/api/?name=${user?.name || 'User'}&background=random`}
+                    alt="User"
+                  />
+                </div>
+                <div className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-white shadow-sm"></div>
               </div>
 
               {/* Dropdown for Logout */}
-              <div className="absolute top-full right-0 mt-4 w-56 bg-white rounded-xl shadow-xl py-2 ring-1 ring-black ring-opacity-5 hidden group-hover:block z-50 transform origin-top-right transition-all animate-fade-in border border-gray-100">
-                <div className="px-4 py-3 border-b border-gray-100 mb-1 bg-gray-50/50">
-                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Signed in as</p>
-                  <p className="text-sm font-semibold text-gray-900 truncate mt-0.5">{user?.email || 'guest@company.com'}</p>
+              <div className="absolute top-full right-0 mt-6 w-64 glass-panel rounded-2xl py-2 hidden group-hover:block z-50 transform origin-top-right transition-all animate-fade-in-scale">
+                <div className="px-5 py-4 border-b border-gray-100 mb-2">
+                  <p className="text-sm font-bold text-gray-900 truncate">{user?.name || 'Guest User'}</p>
+                  <p className="text-xs text-gray-500 font-medium truncate mt-0.5">{user?.email || 'guest@company.com'}</p>
+                  <div className="mt-2 text-[10px] font-bold uppercase tracking-wider text-primary-600 bg-primary-50 px-2 py-0.5 rounded-full w-fit">
+                    {user?.role || 'Viewer'}
+                  </div>
                 </div>
-                <div className="p-1">
+                <div className="p-2 space-y-1">
                   <button
                     onClick={() => navigate('/settings')}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 flex items-center transition-colors rounded-lg"
+                    className="w-full text-left px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-primary-600 flex items-center transition-all rounded-xl"
                   >
-                    <Settings className="w-4 h-4 mr-2" />
+                    <Settings className="w-4 h-4 mr-3" />
                     Account Settings
                   </button>
                   <button
                     onClick={handleLogout}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-red-50 hover:text-red-600 flex items-center transition-colors rounded-lg"
+                    className="w-full text-left px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-rose-50 hover:text-rose-600 flex items-center transition-all rounded-xl"
                   >
-                    <LogOut className="w-4 h-4 mr-2" />
+                    <LogOut className="w-4 h-4 mr-3" />
                     Sign out
                   </button>
                 </div>
@@ -338,29 +344,31 @@ export default function Layout() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-6 lg:p-10 overflow-y-auto animate-fade-in custom-scrollbar">
-          <Outlet />
+        <main className="flex-1 px-8 pb-8 overflow-y-auto custom-scrollbar">
+          <div className="animate-slide-up">
+            <Outlet />
+          </div>
         </main>
       </div>
 
-      {/* Connection Status Overlay */}
+      {/* Connection Status Overlay - Same logic, upgraded UI */}
       {showStatusOverlay && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-md animate-fade-in">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in-scale border border-white/40">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-white/50">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                <div className="p-2.5 bg-primary-50 text-primary-600 rounded-xl">
                   <Activity className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-gray-900">System Status</h3>
-                  <p className="text-xs text-gray-500 font-medium">Real-time connectivity check</p>
+                  <h3 className="font-bold text-gray-900">System Connect</h3>
+                  <p className="text-xs text-gray-500 font-medium">Real-time status monitor</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowStatusOverlay(false)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100/80 rounded-xl transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -369,56 +377,56 @@ export default function Layout() {
             {/* Content */}
             <div className="p-6 space-y-4">
               {/* Server Status */}
-              <div className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/30">
+              <div className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-white/60 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${connectionDetails.server ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                  <div className={`p-2.5 rounded-xl ${connectionDetails.server ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                     <Server className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-700 text-sm">Backend API</p>
-                    <p className="text-xs text-gray-500">Node/Express Server</p>
+                    <p className="font-bold text-gray-800 text-sm">Backend API</p>
+                    <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wide">Node/Express</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-sm font-bold ${connectionDetails.server ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`text-sm font-bold ${connectionDetails.server ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {connectionDetails.server ? 'Online' : 'Offline'}
                   </span>
                   {connectionDetails.server ? (
-                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <CheckCircle className="w-5 h-5 text-emerald-500" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-red-600" />
+                    <XCircle className="w-5 h-5 text-rose-500" />
                   )}
                 </div>
               </div>
 
               {/* Database Status */}
-              <div className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/30">
+              <div className="flex items-center justify-between p-4 rounded-2xl border border-gray-100 bg-white/60 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${connectionDetails.database ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                  <div className={`p-2.5 rounded-xl ${connectionDetails.database ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                     <Database className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-700 text-sm">Database</p>
-                    <p className="text-xs text-gray-500">PostgreSQL (Prisma)</p>
+                    <p className="font-bold text-gray-800 text-sm">Database</p>
+                    <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wide">PostgreSQL</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-sm font-bold ${connectionDetails.database ? 'text-green-600' : 'text-red-600'}`}>
-                    {connectionDetails.database ? 'Connected' : 'Disconnected'}
+                  <span className={`text-sm font-bold ${connectionDetails.database ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {connectionDetails.database ? 'Live' : 'Down'}
                   </span>
                   {connectionDetails.database ? (
-                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <CheckCircle className="w-5 h-5 text-emerald-500" />
                   ) : (
-                    <XCircle className="w-4 h-4 text-red-600" />
+                    <XCircle className="w-5 h-5 text-rose-500" />
                   )}
                 </div>
               </div>
 
               {/* Last Checked */}
-              <div className="flex items-center justify-between pt-2">
-                <div className="flex items-center gap-2 text-gray-400 text-xs font-medium">
+              <div className="flex items-center justify-center pt-2">
+                <div className="flex items-center gap-2 text-gray-400 text-xs font-semibold bg-gray-100 px-3 py-1 rounded-full">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>Last checked: {connectionDetails.lastChecked ? connectionDetails.lastChecked.toLocaleTimeString() : 'Never'}</span>
+                  <span>Last synced: {connectionDetails.lastChecked ? connectionDetails.lastChecked.toLocaleTimeString() : 'Never'}</span>
                 </div>
               </div>
             </div>
@@ -428,10 +436,10 @@ export default function Layout() {
               <button
                 onClick={checkConnection}
                 disabled={connectionDetails.loading}
-                className="w-full py-2.5 bg-white border border-gray-200 hover:border-blue-200 hover:bg-blue-50 text-gray-700 hover:text-blue-600 font-semibold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-sm active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
+                className="w-full py-3 bg-white border border-gray-200 hover:border-primary-200 hover:bg-primary-50 text-gray-700 hover:text-primary-600 font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-sm active:scale-95 disabled:opacity-70 disabled:pointer-events-none"
               >
                 <RefreshCw className={`w-4 h-4 ${connectionDetails.loading ? 'animate-spin' : ''}`} />
-                {connectionDetails.loading ? 'Checking...' : 'Refresh Status'}
+                {connectionDetails.loading ? 'Verifying status...' : 'Refresh System Status'}
               </button>
             </div>
           </div>

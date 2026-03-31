@@ -25,12 +25,20 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _startAutoLogin() async {
-    if (_isLoading) return; // Already loading
+    if (_isLoading) return;
     setState(() => _isLoading = true);
-    // Reduced to 1 second for a snappier feel while keeping the "smooth" transition
-    await Future.delayed(const Duration(seconds: 1));
-    if (mounted) {
+
+    final error = await context.read<AuthProvider>().resumeStoredSession();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _isLoading = false);
+    if (error == null) {
       Navigator.pushReplacementNamed(context, '/dashboard');
+    } else {
+      _showErrorSnackBar(error);
     }
   }
 
@@ -44,37 +52,59 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _handleLogin() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter both email and password'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showErrorSnackBar('Please enter both email and password');
+      return;
+    }
+
+    // Email Regex Validation
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(email)) {
+      _showErrorSnackBar('Please enter a valid email address');
       return;
     }
 
     setState(() => _isLoading = true);
-    final success = await context.read<AuthProvider>().login(
-          _emailController.text,
-          _passwordController.text,
-        );
+    final errorMsg = await context.read<AuthProvider>().login(email, password);
 
     if (mounted) {
       setState(() => _isLoading = false);
-      if (success) {
-        // DIRECT NAVIGATION on manual login - don't wait for 2s fake transition
+      if (errorMsg == null) {
         Navigator.pushReplacementNamed(context, '/dashboard');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Invalid credentials. Please try again.'),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        _showErrorSnackBar(errorMsg);
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showInfoSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.blueAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -144,6 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     hint: 'Email Address',
                     icon: Icons.alternate_email_rounded,
                     keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
                   ),
                   const SizedBox(height: 20),
                   _buildInputField(
@@ -154,13 +185,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     obscureText: _obscurePassword,
                     onTogglePassword: () =>
                         setState(() => _obscurePassword = !_obscurePassword),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _handleLogin(),
                   ),
 
                   const SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        _showInfoSnackBar(
+                            'Please contact your system administrator to reset your password.');
+                      },
                       child: Text(
                         'Forgot Password?',
                         style: TextStyle(
@@ -268,7 +304,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: Colors.white.withValues(alpha: 0.5)),
                       ),
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          _showInfoSnackBar(
+                              'Please contact your system administrator to create an account.');
+                        },
                         child: const Text(
                           'Contact Admin',
                           style: TextStyle(
@@ -278,6 +317,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 20),
+                  const SizedBox(height: 20),
+                  // Version Info
+                  Center(
+                    child: Text(
+                      'Version 1.0.0+1',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 20),
                 ],
@@ -297,6 +348,8 @@ class _LoginScreenState extends State<LoginScreen> {
     bool obscureText = false,
     VoidCallback? onTogglePassword,
     TextInputType keyboardType = TextInputType.text,
+    TextInputAction? textInputAction,
+    Function(String)? onSubmitted,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -308,6 +361,8 @@ class _LoginScreenState extends State<LoginScreen> {
         controller: controller,
         obscureText: obscureText,
         keyboardType: keyboardType,
+        textInputAction: textInputAction,
+        onSubmitted: onSubmitted,
         style:
             const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
         decoration: InputDecoration(

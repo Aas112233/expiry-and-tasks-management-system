@@ -1,5 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { queryClient } from './lib/queryClient';
+import { initSentry, setSentryUser, addBreadcrumb } from './lib/sentry';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import ExpiredGoods from './pages/ExpiredGoods';
@@ -44,42 +48,127 @@ function PermissionRoute({ module, type = 'read', children }: { module: string, 
 
 import { ToastProvider } from './ToastContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import { SectionErrorBoundary } from './components/SectionErrorBoundary';
+
+// Initialize Sentry on app load
+initSentry();
+
+function AppContent() {
+  const { user, isAuthenticated } = useAuth();
+
+  // Update Sentry user context when auth state changes
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      setSentryUser({
+        id: user.id || 'unknown',
+        email: user.email,
+        username: user.name,
+      });
+      addBreadcrumb('User authenticated', 'auth', 'info', { userId: user.id });
+    } else {
+      setSentryUser(null);
+    }
+  }, [isAuthenticated, user]);
+
+  return null; // This component just handles side effects
+}
 
 function App() {
   return (
-    <ErrorBoundary>
-      <ToastProvider>
-        <AuthProvider>
-          <BranchProvider>
-            <SearchProvider>
-              <HashRouter>
-                <Routes>
-                  <Route path="/login" element={<Login />} />
+    <QueryClientProvider client={queryClient}>
+      <ErrorBoundary>
+        <ToastProvider>
+          <AuthProvider>
+            <AppContent />
+            <BranchProvider>
+              <SearchProvider>
+                <HashRouter>
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
 
-                  <Route element={<ProtectedRoute />}>
-                    <Route element={<Layout />}>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/expired-goods" element={<PermissionRoute module="Inventory"><ExpiredGoods /></PermissionRoute>} />
-                      <Route path="/catalog" element={<PermissionRoute module="Inventory"><Catalog /></PermissionRoute>} />
-                      <Route path="/employees" element={<PermissionRoute module="Employees"><Employees /></PermissionRoute>} />
-                      <Route path="/tasks" element={<PermissionRoute module="Tasks"><Tasks /></PermissionRoute>} />
-                      <Route path="/analysis" element={<Analysis />} />
-                      <Route path="/reports" element={<PermissionRoute module="Reports"><Reports /></PermissionRoute>} />
-                      <Route path="/users" element={<PermissionRoute module="Employees"><Users /></PermissionRoute>} />
-                      <Route path="/branches" element={<PermissionRoute module="Branches"><Branches /></PermissionRoute>} />
-                      <Route path="/settings" element={<PermissionRoute module="Settings"><Settings /></PermissionRoute>} />
+                    <Route element={<ProtectedRoute />}>
+                      <Route element={<Layout />}>
+                        <Route path="/" element={
+                          <SectionErrorBoundary sectionName="Dashboard">
+                            <Dashboard />
+                          </SectionErrorBoundary>
+                        } />
+                        <Route path="/expired-goods" element={
+                          <PermissionRoute module="Inventory">
+                            <SectionErrorBoundary sectionName="Expired Goods">
+                              <ExpiredGoods />
+                            </SectionErrorBoundary>
+                          </PermissionRoute>
+                        } />
+                        <Route path="/catalog" element={
+                          <PermissionRoute module="Inventory">
+                            <SectionErrorBoundary sectionName="Catalog">
+                              <Catalog />
+                            </SectionErrorBoundary>
+                          </PermissionRoute>
+                        } />
+                        <Route path="/employees" element={
+                          <PermissionRoute module="Employees">
+                            <SectionErrorBoundary sectionName="Employees">
+                              <Employees />
+                            </SectionErrorBoundary>
+                          </PermissionRoute>
+                        } />
+                        <Route path="/tasks" element={
+                          <PermissionRoute module="Tasks">
+                            <SectionErrorBoundary sectionName="Tasks">
+                              <Tasks />
+                            </SectionErrorBoundary>
+                          </PermissionRoute>
+                        } />
+                        <Route path="/analysis" element={
+                          <SectionErrorBoundary sectionName="Analysis">
+                            <Analysis />
+                          </SectionErrorBoundary>
+                        } />
+                        <Route path="/reports" element={
+                          <PermissionRoute module="Reports">
+                            <SectionErrorBoundary sectionName="Reports">
+                              <Reports />
+                            </SectionErrorBoundary>
+                          </PermissionRoute>
+                        } />
+                        <Route path="/users" element={
+                          <PermissionRoute module="Employees">
+                            <SectionErrorBoundary sectionName="Users">
+                              <Users />
+                            </SectionErrorBoundary>
+                          </PermissionRoute>
+                        } />
+                        <Route path="/branches" element={
+                          <PermissionRoute module="Branches">
+                            <SectionErrorBoundary sectionName="Branches">
+                              <Branches />
+                            </SectionErrorBoundary>
+                          </PermissionRoute>
+                        } />
+                        <Route path="/settings" element={
+                          <PermissionRoute module="Settings">
+                            <SectionErrorBoundary sectionName="Settings">
+                              <Settings />
+                            </SectionErrorBoundary>
+                          </PermissionRoute>
+                        } />
+                      </Route>
                     </Route>
-                  </Route>
 
-                  <Route path="/unauthorized" element={<NotAuthorized />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </HashRouter>
-            </SearchProvider>
-          </BranchProvider>
-        </AuthProvider>
-      </ToastProvider>
-    </ErrorBoundary>
+                    <Route path="/unauthorized" element={<NotAuthorized />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </HashRouter>
+              </SearchProvider>
+            </BranchProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </ErrorBoundary>
+      {/* React Query Devtools - only in development */}
+      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+    </QueryClientProvider>
   );
 }
 

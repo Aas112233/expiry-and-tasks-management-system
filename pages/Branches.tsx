@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Search, MapPin, Phone, User, MoreVertical, Edit2, Trash2, X, Save, Users, ClipboardList, AlertCircle, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import { Branch } from '../types';
 import { useBranch } from '../BranchContext';
@@ -255,9 +256,9 @@ export default function Branches() {
             </div>
 
             {/* Add/Edit Branch Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            {isModalOpen && createPortal(
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg border border-white/20 animate-scale-in">
                         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
                             <h2 className="text-xl font-bold text-gray-900">{editingId ? 'Edit Branch' : 'Add New Branch'}</h2>
                             <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600">
@@ -355,13 +356,14 @@ export default function Branches() {
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Delete Confirmation Modal */}
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm">
-                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center">
+            {isDeleteModalOpen && createPortal(
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center animate-scale-in">
                         <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
                             <AlertTriangle className="w-6 h-6" />
                         </div>
@@ -384,7 +386,8 @@ export default function Branches() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

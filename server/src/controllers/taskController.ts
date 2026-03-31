@@ -2,8 +2,8 @@ import { Request, Response } from 'express';
 import prisma, { withTransactionRetry } from '../prisma';
 
 /**
- * PRODUCTION TASK CONTROLLER
- * Real database interactions with user-assignee synchronization.
+ * PAGINATED TASK CONTROLLER
+ * Real database interactions with user-assignee synchronization and pagination.
  */
 
 export const getAllTasks = async (req: Request, res: Response): Promise<void> => {
@@ -11,9 +11,52 @@ export const getAllTasks = async (req: Request, res: Response): Promise<void> =>
         const user = (req as any).user;
         const where: any = {};
 
+        // Parse pagination params
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        const skip = (page - 1) * limit;
+
+        // Parse filter params
+        const search = req.query.search as string;
+        const status = req.query.status as string;
+        const priority = req.query.priority as string;
+        const branchFilter = req.query.branch as string;
+        const assignedToId = req.query.assignedToId as string;
+
         if (user?.role !== 'Admin' && user?.branch !== 'all') {
             where.branch = user?.branch;
+        } else if (branchFilter && branchFilter !== 'all') {
+            where.branch = branchFilter;
         }
+
+        // Add search filter
+        if (search) {
+            where.OR = [
+                { title: { contains: search, mode: 'insensitive' } },
+                { description: { contains: search, mode: 'insensitive' } },
+                { assigneeName: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        // Add status filter
+        if (status && status !== 'all') {
+            where.status = status;
+        }
+
+        // Add priority filter
+        if (priority && priority !== 'all') {
+            where.priority = priority;
+        }
+
+        // Add assignee filter
+        if (assignedToId && assignedToId !== 'all') {
+            where.assignedToId = assignedToId;
+        }
+
+        // Get total count for pagination
+        const totalCount = await withTransactionRetry<number>(() =>
+            (prisma as any).task.count({ where }) as Promise<number>
+        );
 
         const tasks = await withTransactionRetry(() =>
             (prisma as any).task.findMany({
@@ -23,10 +66,23 @@ export const getAllTasks = async (req: Request, res: Response): Promise<void> =>
                         select: { name: true, avatar: true }
                     }
                 },
-                orderBy: { dueDate: 'asc' }
+                orderBy: { dueDate: 'asc' },
+                skip,
+                take: limit
             })
         );
-        res.json(tasks);
+
+        res.json({
+            tasks,
+            pagination: {
+                page,
+                limit,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit),
+                hasNextPage: page * limit < totalCount,
+                hasPrevPage: page > 1
+            }
+        });
     } catch (error) {
         console.error('[Tasks] Fetch error:', error);
         res.status(500).json({ message: 'Error fetching tasks', error });

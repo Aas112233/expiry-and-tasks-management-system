@@ -24,8 +24,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
   final _notesController = TextEditingController();
   final _nameFocusNode = FocusNode();
 
-  DateTime _mfgDate = DateTime.now();
-  DateTime _expDate = DateTime.now().add(const Duration(days: 90));
+  DateTime? _mfgDate;
+  DateTime? _expDate;
   String _unit = 'pcs';
   bool _isSubmitting = false;
 
@@ -44,8 +44,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
       _quantityController.text = (item['quantity'] ?? '').toString();
       _notesController.text = item['notes'] ?? '';
       _unit = item['unit'] ?? 'pcs';
-      _mfgDate = DateTime.tryParse(item['mfgDate'] ?? '') ?? DateTime.now();
-      _expDate = DateTime.tryParse(item['expDate'] ?? '') ?? DateTime.now();
+      _mfgDate = DateTime.tryParse(item['mfgDate'] ?? '');
+      _expDate = DateTime.tryParse(item['expDate'] ?? '');
       _hasCatalogMatch = true; // Don't lookup if editing
       _lastLookupBarcode = _barcodeController.text;
     }
@@ -73,17 +73,49 @@ class _AddItemScreenState extends State<AddItemScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_expDate.isBefore(_mfgDate)) {
+    if (_mfgDate == null || _expDate == null) {
       if (mounted) {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: const Color(0xFF1E293B),
-            title: const Text('Invalid Dates',
-                style: TextStyle(color: Colors.white)),
-            content: const Text(
-                'Expiry date cannot be before manufacturing date.',
-                style: TextStyle(color: Colors.white70)),
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            title: Text('Missing Dates',
+                style:
+                    TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+            content: Text('Please enter both manufacturing and expiry dates.',
+                style: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.7))),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK',
+                    style: TextStyle(color: Colors.blueAccent)),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    if (_expDate!.isBefore(_mfgDate!)) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            title: Text('Invalid Dates',
+                style:
+                    TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+            content: Text('Expiry date cannot be before manufacturing date.',
+                style: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.7))),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
@@ -106,8 +138,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
       'barcode': _barcodeController.text,
       'quantity': int.parse(_quantityController.text),
       'unit': _unit,
-      'mfgDate': _mfgDate.toIso8601String(),
-      'expDate': _expDate.toIso8601String(),
+      'mfgDate': _mfgDate!.toIso8601String(),
+      'expDate': _expDate!.toIso8601String(),
       'branch': auth.userBranch,
       'notes': _notesController.text,
     };
@@ -143,8 +175,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
           _quantityController.clear();
           _notesController.clear();
           setState(() {
-            _mfgDate = DateTime.now();
-            _expDate = DateTime.now().add(const Duration(days: 90));
+            _mfgDate = null;
+            _expDate = null;
             _hasCatalogMatch = false;
             _lastLookupBarcode = null;
           });
@@ -448,15 +480,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B),
+                        color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(15),
                         border: Border.all(color: Colors.white12),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           value: _unit,
-                          dropdownColor: const Color(0xFF1E293B),
-                          style: const TextStyle(color: Colors.white),
+                          dropdownColor: Theme.of(context).colorScheme.surface,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface),
                           items: ['pcs', 'box', 'bundle', 'carton']
                               .map((u) =>
                                   DropdownMenuItem(value: u, child: Text(u)))
@@ -484,6 +517,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                       (date) => setState(() => _expDate = date), true),
                 ],
               ),
+              _buildExpiryPreview(),
               const SizedBox(height: 24),
               _buildTextField(
                 controller: _notesController,
@@ -560,8 +594,67 @@ class _AddItemScreenState extends State<AddItemScreen> {
     );
   }
 
-  Widget _buildDateInput(String label, DateTime initialDate,
-      Function(DateTime) onDateChanged, bool isExp) {
+  Widget _buildExpiryPreview() {
+    if (_expDate == null) return const SizedBox.shrink();
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final expiry = DateTime(_expDate!.year, _expDate!.month, _expDate!.day);
+    final daysRemaining = expiry.difference(today).inDays;
+
+    Color color;
+    String statusText;
+    IconData icon;
+
+    if (daysRemaining < 0) {
+      color = Colors.redAccent;
+      statusText = 'Expired by ${daysRemaining.abs()} days';
+      icon = Icons.error_outline;
+    } else if (daysRemaining == 0) {
+      color = Colors.redAccent;
+      statusText = 'Expires TODAY';
+      icon = Icons.warning_amber_rounded;
+    } else if (daysRemaining <= 15) {
+      color = Colors.orangeAccent;
+      statusText = 'Critical: $daysRemaining days left';
+      icon = Icons.access_time;
+    } else if (daysRemaining <= 45) {
+      color = Colors.amber;
+      statusText = 'Warning: $daysRemaining days left';
+      icon = Icons.priority_high;
+    } else {
+      color = Colors.greenAccent;
+      statusText = 'Good: $daysRemaining days remaining';
+      icon = Icons.check_circle_outline;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 12),
+          Text(
+            statusText,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateInput(String label, DateTime? initialDate,
+      Function(DateTime?) onDateChanged, bool isExp) {
     // Note: We use a stateless controller here because the parent already holds the DateTime state.
     // However, for manual input we need to handle the display separately if needed.
     return _ManualDateInput(
@@ -575,8 +668,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
 class _ManualDateInput extends StatefulWidget {
   final String label;
-  final DateTime initialDate;
-  final Function(DateTime) onDateChanged;
+  final DateTime? initialDate;
+  final Function(DateTime?) onDateChanged;
   final bool isExp;
 
   const _ManualDateInput({
@@ -597,14 +690,25 @@ class _ManualDateInputState extends State<_ManualDateInput> {
   void initState() {
     super.initState();
     _controller = TextEditingController(
-        text: DateFormat('dd/MM/yyyy').format(widget.initialDate));
+        text: widget.initialDate != null
+            ? DateFormat('dd/MM/yyyy').format(widget.initialDate!)
+            : '');
   }
 
   @override
   void didUpdateWidget(_ManualDateInput oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initialDate != oldWidget.initialDate) {
-      _controller.text = DateFormat('dd/MM/yyyy').format(widget.initialDate);
+      final newText = widget.initialDate != null
+          ? DateFormat('dd/MM/yyyy').format(widget.initialDate!)
+          : '';
+      if (_controller.text != newText) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _controller.text != newText) {
+            _controller.text = newText;
+          }
+        });
+      }
     }
   }
 
@@ -631,12 +735,16 @@ class _ManualDateInputState extends State<_ManualDateInput> {
           TextFormField(
             controller: _controller,
             keyboardType: TextInputType.number,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
+            style: const TextStyle(
+                color: Colors.white, fontSize: 13, letterSpacing: -0.5),
             inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
               DateTextFormatter(),
             ],
             onChanged: (value) {
+              if (value.isEmpty) {
+                widget.onDateChanged(null);
+                return;
+              }
               if (value.length == 10) {
                 try {
                   final date = DateFormat('dd/MM/yyyy').parseStrict(value);
@@ -647,51 +755,67 @@ class _ManualDateInputState extends State<_ManualDateInput> {
               }
             },
             validator: (v) {
-              if (v == null || v.isEmpty) return 'Required';
-              if (v.length < 10) return 'Use DD/MM/YYYY';
+              if (v == null || v.isEmpty) {
+                return 'Required';
+              }
+              if (v.length < 10) {
+                return 'Date incomplete';
+              }
               try {
                 final date = DateFormat('dd/MM/yyyy').parseStrict(v);
-                if (date.year < 2020 || date.year > 2100) return 'Invalid year';
+                if (date.year < 2020 || date.year > 2100) {
+                  return 'Year must be 2020+';
+                }
                 return null;
               } catch (e) {
-                return 'Invalid date';
+                return 'Invalid Date (Day/Month)';
               }
             },
             decoration: InputDecoration(
               hintText: 'DD/MM/YYYY',
-              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
+              hintStyle: TextStyle(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.2)),
               filled: true,
-              fillColor: const Color(0xFF1E293B),
+              fillColor: Theme.of(context).colorScheme.surface,
               contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
               isDense: true,
               prefixIcon: Icon(Icons.calendar_today,
                   size: 16,
                   color:
                       widget.isExp ? Colors.orangeAccent : Colors.blueAccent),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.edit_calendar,
-                    size: 20, color: Colors.white38),
-                onPressed: () async {
-                  final DateTime? picked = await showDatePicker(
-                    context: context,
-                    initialDate: widget.initialDate,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime(2101),
-                    builder: (context, child) => Theme(
-                      data: Theme.of(context).copyWith(
-                        colorScheme: const ColorScheme.dark(
-                            primary: Colors.blueAccent,
-                            surface: Color(0xFF1E293B)),
+              suffixIcon: SizedBox(
+                width: 28,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.edit_calendar,
+                      size: 18, color: Colors.white38),
+                  onPressed: () async {
+                    final DateTime? picked = await showDatePicker(
+                      context: context,
+                      initialDate: widget.initialDate ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2101),
+                      builder: (context, child) => Theme(
+                        data: Theme.of(context).copyWith(
+                          colorScheme: ColorScheme.dark(
+                              primary: Colors.blueAccent,
+                              surface: Theme.of(context).colorScheme.surface),
+                        ),
+                        child: child!,
                       ),
-                      child: child!,
-                    ),
-                  );
-                  if (picked != null) {
-                    _controller.text = DateFormat('dd/MM/yyyy').format(picked);
-                    widget.onDateChanged(picked);
-                  }
-                },
+                    );
+                    if (picked != null) {
+                      _controller.text =
+                          DateFormat('dd/MM/yyyy').format(picked);
+                      widget.onDateChanged(picked);
+                    }
+                  },
+                ),
               ),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -714,24 +838,32 @@ class DateTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
       TextEditingValue oldValue, TextEditingValue newValue) {
-    if (newValue.text.length > 10) return oldValue;
-
-    var text = newValue.text;
-    if (newValue.selection.baseOffset < oldValue.selection.baseOffset) {
+    // Allow deletion without enforcing format immediately makes backspace natural
+    if (newValue.text.length < oldValue.text.length) {
       return newValue;
     }
 
-    var out = '';
-    for (var i = 0; i < text.length; i++) {
-      out += text[i];
-      if ((i == 1 || i == 3) && text.length > i + 1 && text[i + 1] != '/') {
-        out += '/';
+    // Sanitize input: only keep digits
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // Limit to 8 digits (DDMMYYYY)
+    if (digits.length > 8) return oldValue;
+
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      buffer.write(digits[i]);
+      // Insert slash after day (2 digits) and month (4 digits total)
+      // provided strictly that it's not the end of the string
+      if ((i == 1 || i == 3) && i != digits.length - 1) {
+        buffer.write('/');
       }
     }
 
-    return oldValue.copyWith(
-      text: out,
-      selection: TextSelection.collapsed(offset: out.length),
+    final formatted = buffer.toString();
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

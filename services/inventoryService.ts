@@ -1,5 +1,25 @@
 import { ExpiredItem, ExpiryStatus } from '../types';
-import { apiFetch } from './apiConfig';
+import { apiFetch, buildQueryString } from './apiConfig';
+
+export interface InventoryQueryParams {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    branch?: string;
+}
+
+export interface PaginatedInventoryResponse {
+    items: ExpiredItem[];
+    pagination: {
+        page: number;
+        limit: number;
+        totalCount: number;
+        totalPages: number;
+        hasNextPage: boolean;
+        hasPrevPage: boolean;
+    };
+}
 
 class InventoryService {
     private mapToFrontend(item: any): ExpiredItem {
@@ -22,9 +42,15 @@ class InventoryService {
         };
     }
 
-    async getAllItems(): Promise<ExpiredItem[]> {
-        const items = await apiFetch('/inventory');
-        return items.map((item: any) => this.mapToFrontend(item));
+    async getAllItems(params: InventoryQueryParams = {}): Promise<PaginatedInventoryResponse> {
+        const queryString = buildQueryString(params);
+        const response = await apiFetch<PaginatedInventoryResponse>(`/inventory${queryString}`);
+
+        // Map items to frontend format
+        return {
+            ...response,
+            items: response.items.map((item: any) => this.mapToFrontend(item))
+        };
     }
 
     async createItem(itemData: Omit<ExpiredItem, 'id' | 'status'>): Promise<ExpiredItem> {

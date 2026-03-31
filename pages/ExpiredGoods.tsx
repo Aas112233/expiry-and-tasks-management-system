@@ -1,58 +1,69 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
-import { Plus, Search, Filter, Scan, Calendar, Save, X, ArrowUpDown, AlertCircle, Trash2, Edit2, AlertTriangle, Package, Loader2, RefreshCw, FileSpreadsheet, Download } from 'lucide-react';
+import { Plus, Search, Filter, Scan, Save, X, AlertCircle, Trash2, Edit2, AlertTriangle, Package, Loader2, RefreshCw, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { ExpiryStatus, ExpiredItem, Role } from '../types';
 import { useBranch } from '../BranchContext';
 import { useSearch } from '../SearchContext';
-import { inventoryService } from '../services/inventoryService';
 import { catalogService } from '../services/catalogService';
 import { useAuth } from '../AuthContext';
+import { useInventory, useCreateInventoryItem, useUpdateInventoryItem, useDeleteInventoryItem } from '../hooks/useInventory';
+import { useInventoryShortcuts } from '../hooks/useKeyboardShortcuts';
+import { PageSkeleton } from '../components/Skeleton';
+import { InventoryVirtualTable } from '../components/VirtualTable';
+
+const ITEMS_PER_PAGE = 20;
 
 export default function Inventory() {
   const location = useLocation();
   const { selectedBranch, branches } = useBranch();
-  const { searchQuery } = useSearch();
+  const { debouncedQuery } = useSearch();
   const { hasPermission, user } = useAuth();
 
-  const [items, setItems] = useState<ExpiredItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [localBranchFilter, setLocalBranchFilter] = useState('All Branches');
   const [sortConfig, setSortConfig] = useState<{ key: keyof ExpiredItem; direction: 'asc' | 'desc' } | null>({ key: 'status' as any, direction: 'asc' });
+  
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Modal State
+  
+  // Form state
   const [newItem, setNewItem] = useState<Partial<ExpiredItem>>({
     remainingQty: 0,
     branch: user?.role !== Role.Admin ? (user?.branchId || '') : (selectedBranch !== 'All Branches' ? selectedBranch : (branches[0]?.name || 'Main Branch')),
     unitName: 'pcs',
     notes: ''
   });
-
   const [isLookingUp, setIsLookingUp] = useState(false);
 
-  // Initial Load
-  useEffect(() => {
-    loadInventory();
-  }, []);
+  // React Query hooks
+  const { data, isLoading, error, refetch } = useInventory({
+    page: currentPage,
+    limit: ITEMS_PER_PAGE,
+    search: debouncedQuery || undefined,
+    status: filterStatus !== 'All' ? filterStatus : undefined,
+    branch: selectedBranch !== 'All Branches' 
+      ? selectedBranch 
+      : (localBranchFilter !== 'All Branches' ? localBranchFilter : undefined)
+  });
 
-  const loadInventory = async () => {
-    setIsLoading(true);
-    try {
-      const data = await inventoryService.getAllItems();
-      setItems(data);
-    } catch (error) {
-      console.error("Failed to load inventory", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const createItem = useCreateInventoryItem();
+  const updateItem = useUpdateInventoryItem();
+  const deleteItem = useDeleteInventoryItem();
+
+  // Search input ref for keyboard shortcut
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedQuery, filterStatus, selectedBranch, localBranchFilter]);
 
   // Sync with global branch context
   useEffect(() => {
@@ -92,10 +103,9 @@ export default function Inventory() {
     }
   };
 
-  const handleOpenModal = (item?: ExpiredItem) => {
+  const handleOpenModal = useCallback((item?: ExpiredItem) => {
     if (item) {
       setEditingId(item.id);
-      // Format dates to YYYY-MM-DD for input fields if they exist
       setNewItem({
         ...item,
         mfgDate: item.mfgDate ? new Date(item.mfgDate).toISOString().split('T')[0] : '',
@@ -112,17 +122,16 @@ export default function Inventory() {
     }
     setValidationError(null);
     setIsModalOpen(true);
-  };
+  }, [selectedBranch, branches]);
 
   const handleBarcodeChange = async (barcode: string) => {
     setNewItem(prev => ({ ...prev, barcode }));
 
-    // Only lookup for reasonably long barcodes
     if (barcode.length >= 4) {
       setIsLookingUp(true);
       try {
         const catalogItem = await catalogService.getByBarcode(barcode);
-        if (catalogItem && !newItem.productName) { // Only auto-fill if the name is empty or we just scanned
+        if (catalogItem && !newItem.productName) {
           setNewItem(prev => ({
             ...prev,
             productName: catalogItem.productName || prev.productName,
@@ -142,54 +151,53 @@ export default function Inventory() {
     setNewItem({ remainingQty: 0, unitName: 'pcs', notes: '' });
     setEditingId(null);
     setValidationError(null);
-    setIsSaving(false);
   };
+
+  // Keyboard shortcuts - must be after function definitions
+  useInventoryShortcuts({
+    onNew: () => hasPermission('Inventory', 'write') && handleOpenModal(),
+    onSearch: () => searchInputRef.current?.focus(),
+    onRefresh: () => refetch(),
+    onCloseModal: handleCloseModal,
+    isModalOpen
+  });
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
-    setIsSaving(true);
 
     if (!newItem.productName || !newItem.expDate || !newItem.mfgDate) {
       setValidationError('Please fill in all required fields.');
-      setIsSaving(false);
       return;
     }
     if (new Date(newItem.expDate) <= new Date(newItem.mfgDate)) {
       setValidationError('Expiry Date must be after Manufacturing Date.');
-      setIsSaving(false);
       return;
     }
     if ((newItem.remainingQty || 0) < 0) {
       setValidationError('Remaining Quantity cannot be negative.');
-      setIsSaving(false);
       return;
     }
 
     try {
       if (editingId) {
-        const updated = await inventoryService.updateItem(editingId, newItem);
-        setItems(prev => prev.map(item => item.id === editingId ? updated : item));
+        await updateItem.mutateAsync({ id: editingId, updates: newItem });
       } else {
-        const created = await inventoryService.createItem(newItem as Omit<ExpiredItem, 'id' | 'status'>);
-        setItems(prev => [created, ...prev]);
+        await createItem.mutateAsync(newItem as Omit<ExpiredItem, 'id' | 'status'>);
       }
       handleCloseModal();
     } catch (error) {
       setValidationError("Failed to save item. Please try again.");
-    } finally {
-      setIsSaving(false);
     }
   };
 
   const confirmDelete = async () => {
     if (deleteId) {
       try {
-        await inventoryService.deleteItem(deleteId);
-        setItems(prev => prev.filter(i => i.id !== deleteId));
+        await deleteItem.mutateAsync(deleteId);
         setDeleteId(null);
       } catch (error) {
-        alert("Failed to delete item");
+        // Error handled by mutation
       }
     }
   };
@@ -203,131 +211,79 @@ export default function Inventory() {
   };
 
   const handleExportExcel = () => {
-    try {
-      if (sortedItems.length === 0) {
-        alert("No data available to export.");
-        return;
-      }
-
-      console.log('Generating Safe Excel Stream (v1.2.5)...');
-
-      const exportData = sortedItems.map(item => ({
-        'ID': item.id,
-        'Product Name': item.productName,
-        'Barcode/SKU': item.barcode || 'N/A',
-        'Remaining Qty': item.remainingQty,
-        'Unit': item.unitName,
-        'Expiry Date': new Date(item.expDate).toLocaleDateString('en-GB'),
-        'Mfg Date': new Date(item.mfgDate).toLocaleDateString('en-GB'),
-        'Branch': item.branch,
-        'Status': (() => {
-          const d = (item as any).diffDays;
-          if (d < 0) return `${Math.abs(d)}d Overdue`;
-          if (d === 0) return 'Today';
-          return `${d}d Left`;
-        })(),
-        'Notes': item.notes || ''
-      }));
-
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory Data");
-
-      const wscols = [
-        { wch: 20 }, { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
-        { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 40 }
-      ];
-      worksheet['!cols'] = wscols;
-
-      // Force high-compatibility binary generation
-      const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'binary' });
-      function s2ab(s: string) {
-        const buf = new ArrayBuffer(s.length);
-        const view = new Uint8Array(buf);
-        for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
-        return buf;
-      }
-
-      const blob = new Blob([s2ab(wbout)], { type: 'application/octet-stream' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = "Inventory_Report.xlsx";
-      document.body.appendChild(a);
-      a.click();
-
-      setTimeout(() => {
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-      }, 100);
-
-      console.log('Export finalized.');
-    } catch (error) {
-      console.error('Excel Export Error:', error);
-      alert('Export failed. Please check console.');
+    if (!data?.items.length) {
+      alert("No data available to export.");
+      return;
     }
+
+    const exportData = data.items.map(item => ({
+      'ID': item.id,
+      'Product Name': item.productName,
+      'Barcode/SKU': item.barcode || 'N/A',
+      'Remaining Qty': item.remainingQty,
+      'Unit': item.unitName,
+      'Expiry Date': new Date(item.expDate).toLocaleDateString('en-GB'),
+      'Mfg Date': new Date(item.mfgDate).toLocaleDateString('en-GB'),
+      'Branch': item.branch,
+      'Status': item.status,
+      'Notes': item.notes || ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory Data");
+
+    const wscols = [
+      { wch: 20 }, { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
+      { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 40 }
+    ];
+    worksheet['!cols'] = wscols;
+
+    XLSX.writeFile(workbook, `Inventory_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const processedItems = items.map(item => {
-    // Dynamically calculate status for UI to avoid stale data issues
-    const exp = new Date(item.expDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  // Process and sort items
+  // Process items and calculate dynamic status
+  const processedItems = useMemo(() => {
+    if (!data?.items) return [];
+    
+    return data.items.map((item: any) => {
+      const exp = new Date(item.expDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-    let liveStatus = ExpiryStatus.Safe;
-    if (diffDays <= 0) liveStatus = ExpiryStatus.Expired;
-    else if (diffDays <= 15) liveStatus = ExpiryStatus.Critical;
-    else if (diffDays <= 45) liveStatus = ExpiryStatus.Warning;
-    else if (diffDays <= 60) liveStatus = ExpiryStatus.Good;
+      let liveStatus = ExpiryStatus.Safe;
+      if (diffDays <= 0) liveStatus = ExpiryStatus.Expired;
+      else if (diffDays <= 15) liveStatus = ExpiryStatus.Critical;
+      else if (diffDays <= 45) liveStatus = ExpiryStatus.Warning;
+      else if (diffDays <= 60) liveStatus = ExpiryStatus.Good;
 
-    return { ...item, status: liveStatus, diffDays };
-  });
+      return { ...item, status: liveStatus, diffDays, _optimistic: item._optimistic };
+    });
+  }, [data?.items]);
 
-  const filteredItems = processedItems.filter(item => {
-    const matchesSearch = item.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.barcode.includes(searchQuery) ||
-      item.id.includes(searchQuery);
+  const sortedItems = useMemo(() => {
+    if (!sortConfig) return processedItems;
 
-    const matchesStatus = filterStatus === 'All' ? true : item.status === filterStatus;
+    return [...processedItems].sort((a, b) => {
+      if (sortConfig.key === 'status') {
+        const aPriority = statusPriority[a.status] ?? 99;
+        const bPriority = statusPriority[b.status] ?? 99;
+        return sortConfig.direction === 'asc' ? aPriority - bPriority : bPriority - aPriority;
+      }
 
-    let matchesBranch = true;
-    if (selectedBranch !== 'All Branches') {
-      matchesBranch = item.branch === selectedBranch;
-    } else {
-      matchesBranch = localBranchFilter === 'All Branches' ? true : item.branch === localBranchFilter;
-    }
-
-    return matchesSearch && matchesStatus && matchesBranch;
-  });
-
-  const sortedItems = [...filteredItems].sort((a, b) => {
-    if (!sortConfig) return 0;
-
-    // Handle priority sorting for Status
-    if (sortConfig.key === 'status') {
-      const aPriority = statusPriority[a.status] ?? 99;
-      const bPriority = statusPriority[b.status] ?? 99;
-      return sortConfig.direction === 'asc' ? aPriority - bPriority : bPriority - aPriority;
-    }
-
-    const aValue = a[sortConfig.key];
-    const bValue = b[sortConfig.key];
-    if (aValue === undefined || bValue === undefined) return 0;
-    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  const SortIcon = ({ columnKey }: { columnKey: keyof ExpiredItem }) => {
-    if (sortConfig?.key === columnKey) {
-      return <ArrowUpDown className={`w-3 h-3 ml-1 inline ${sortConfig.direction === 'asc' ? 'text-blue-600' : 'text-blue-600'}`} />;
-    }
-    return <ArrowUpDown className="w-3 h-3 ml-1 inline text-gray-300 opacity-0 group-hover:opacity-100" />;
-  };
+      const aValue = a[sortConfig.key];
+      const bValue = b[sortConfig.key];
+      if (aValue === undefined || bValue === undefined) return 0;
+      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [processedItems, sortConfig]);
 
   const bucketTabs = [
-    { label: 'All Items', value: 'All' },
+    { label: 'All Items', value: 'All', count: data?.pagination?.totalCount },
     { label: 'Expired', value: ExpiryStatus.Expired },
     { label: 'Critical (0-15d)', value: ExpiryStatus.Critical },
     { label: 'Warning (16-45d)', value: ExpiryStatus.Warning },
@@ -335,12 +291,37 @@ export default function Inventory() {
     { label: 'Safe (60+d)', value: ExpiryStatus.Safe },
   ];
 
+  const pagination = data?.pagination;
+
+  // Show skeleton on initial load
+  if (isLoading && !data) {
+    return <PageSkeleton />;
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96">
+        <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+        <h3 className="text-lg font-semibold text-gray-900">Failed to load inventory</h3>
+        <p className="text-gray-500 mb-4">{error.message}</p>
+        <button
+          onClick={() => refetch()}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Inventory Management <span className="text-xs text-blue-500 font-mono">v1.2.5-STABLE</span></h1>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Inventory Management <span className="text-xs text-blue-500 font-mono">v2.0-PAGINATED</span></h1>
           <p className="text-gray-500 mt-1">Track stock levels, expiry dates, and product details.</p>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -379,14 +360,24 @@ export default function Inventory() {
               </select>
               <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
-            <button onClick={loadInventory} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Refresh">
-              <RefreshCw className="w-4 h-4" />
+            <button 
+              onClick={() => refetch()} 
+              disabled={isLoading}
+              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50" 
+              title="Refresh"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
 
           <div className="hidden md:flex items-center text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
             <Search className="w-3 h-3 mr-2" />
-            Showing {filteredItems.length} items
+            {pagination?.totalCount ?? 0} total items
+            {pagination && (
+              <span className="ml-2 text-blue-600">
+                Page {pagination.page} of {pagination.totalPages}
+              </span>
+            )}
           </div>
         </div>
 
@@ -402,148 +393,220 @@ export default function Inventory() {
                 }`}
             >
               {tab.label}
+              {tab.count !== undefined && (
+                <span className="ml-1.5 px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px]">
+                  {tab.count}
+                </span>
+              )}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Table Area */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px]">
+      {/* Table Area with Virtual Scrolling for large datasets */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {isLoading ? (
           <div className="flex h-64 items-center justify-center text-gray-400">
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
             <span className="ml-3">Loading inventory...</span>
           </div>
+        ) : sortedItems.length > 100 ? (
+          // Virtual table for large datasets (>100 items)
+          <InventoryVirtualTable
+            items={sortedItems}
+            onEdit={handleOpenModal}
+            onDelete={setDeleteId}
+            hasPermission={hasPermission}
+            sortConfig={sortConfig as any}
+            onSort={(key) => handleSort(key as keyof ExpiredItem)}
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-500 uppercase bg-gray-50/50 border-b border-gray-100">
-                <tr>
-                  <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('productName')}>
-                    Product Name <SortIcon columnKey="productName" />
-                  </th>
-                  <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('id')}>
-                    ID / Barcode <SortIcon columnKey="id" />
-                  </th>
-                  <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('remainingQty')}>
-                    Stock <SortIcon columnKey="remainingQty" />
-                  </th>
-                  <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('expDate')}>
-                    Expiry <SortIcon columnKey="expDate" />
-                  </th>
-                  <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('branch')}>
-                    Branch <SortIcon columnKey="branch" />
-                  </th>
-                  <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('status')}>
-                    Status <SortIcon columnKey="status" />
-                  </th>
-                  <th className="px-6 py-4 font-semibold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {sortedItems.length === 0 ? (
+          // Regular table for smaller datasets
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-gray-500 uppercase bg-gray-50/50 border-b border-gray-100">
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
-                      <div className="flex flex-col items-center justify-center">
-                        <Package className="w-12 h-12 text-gray-200 mb-3" />
-                        <p className="font-medium">No inventory found</p>
-                        <p className="text-xs mt-1">Try adjusting your filters or add a new item.</p>
-                      </div>
-                    </td>
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('productName')}>
+                      Product Name
+                    </th>
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('id')}>
+                      ID / Barcode
+                    </th>
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('remainingQty')}>
+                      Stock
+                    </th>
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('expDate')}>
+                      Expiry
+                    </th>
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('branch')}>
+                      Branch
+                    </th>
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('status')}>
+                      Status
+                    </th>
+                    <th className="px-6 py-4 font-semibold text-right">Actions</th>
                   </tr>
-                ) : (
-                  sortedItems.map((item) => (
-                    <tr key={item.id} className="group hover:bg-blue-50/30 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-gray-900">{item.productName}</span>
-                          <span className="text-xs text-gray-500">{item.unitName}</span>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {sortedItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
+                        <div className="flex flex-col items-center justify-center">
+                          <Package className="w-12 h-12 text-gray-200 mb-3" />
+                          <p className="font-medium">No inventory found</p>
+                          <p className="text-xs mt-1">Try adjusting your filters or add a new item.</p>
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1">
-                          {/* Barcode First (Top) */}
-                          {item.barcode ? (
-                            <div className="flex items-center gap-1.5 text-gray-900">
-                              <Scan className="w-3.5 h-3.5 text-blue-600" />
-                              <span className="font-mono text-xs font-bold tracking-wide">{item.barcode}</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-400 italic pl-1">No Barcode</span>
-                          )}
-
-                          {/* ID Second (Bottom) */}
-                          <span className="font-mono text-[10px] text-gray-400 flex items-center gap-1 pl-0.5" title={item.id}>
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
-                            #{item.id}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 font-medium text-gray-900">{item.remainingQty}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col text-xs space-y-1">
-                          <span className="font-bold text-gray-900">
-                            {new Date(item.expDate).toLocaleDateString('en-GB')}
-                          </span>
-                          <span className={`font-black text-[10px] uppercase tracking-tighter ${item.status === ExpiryStatus.Expired ? 'text-red-600' : 'text-blue-500/70'}`}>
-                            {item.status}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-gray-500 text-xs">{item.branch}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ring-1 ring-inset ${getStatusColor(item.status)}`}>
-                          {(() => {
-                            const d = (item as any).diffDays;
-                            if (d < 0) return `${Math.abs(d)}d Overdue`;
-                            if (d === 0) return 'Today';
-                            return `${d}d Left`;
-                          })()}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        {hasPermission('Inventory', 'write') && (
-                          <div className="flex justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handleOpenModal(item)}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteId(item.id)}
-                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    sortedItems.map((item) => (
+                      <tr key={item.id} className={`group hover:bg-blue-50/30 transition-colors ${item._optimistic ? 'opacity-70' : ''}`}>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-gray-900">{item.productName}</span>
+                            <span className="text-xs text-gray-500">{item.unitName}</span>
+                            {item._optimistic && <span className="text-[10px] text-blue-500">Saving...</span>}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            {item.barcode ? (
+                              <div className="flex items-center gap-1.5 text-gray-900">
+                                <Scan className="w-3.5 h-3.5 text-blue-600" />
+                                <span className="font-mono text-xs font-bold tracking-wide">{item.barcode}</span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic pl-1">No Barcode</span>
+                            )}
+                            <span className="font-mono text-[10px] text-gray-400 flex items-center gap-1 pl-0.5" title={item.id}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                              #{item.id.slice(0, 8)}...
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-medium text-gray-900">{item.remainingQty}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col text-xs space-y-1">
+                            <span className="font-bold text-gray-900">
+                              {new Date(item.expDate).toLocaleDateString('en-GB')}
+                            </span>
+                            <span className={`font-black text-[10px] uppercase tracking-tighter ${item.status === ExpiryStatus.Expired ? 'text-red-600' : 'text-blue-500/70'}`}>
+                              {item.status}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-gray-500 text-xs">{item.branch}</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ring-1 ring-inset ${getStatusColor(item.status)}`}>
+                            {item.diffDays < 0 ? `${Math.abs(item.diffDays)}d Overdue` : 
+                             item.diffDays === 0 ? 'Today' : `${item.diffDays}d Left`}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          {hasPermission('Inventory', 'write') && (
+                            <div className="flex justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => handleOpenModal(item)}
+                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteId(item.id)}
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            {pagination && pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
+                <div className="text-sm text-gray-500">
+                  Showing {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.totalCount)} of {pagination.totalCount}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={!pagination.hasPrevPage || isLoading}
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                      let pageNum: number;
+                      if (pagination.totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (pagination.page <= 3) {
+                        pageNum = i + 1;
+                      } else if (pagination.page >= pagination.totalPages - 2) {
+                        pageNum = pagination.totalPages - 4 + i;
+                      } else {
+                        pageNum = pagination.page - 2 + i;
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          disabled={isLoading}
+                          className={`w-9 h-9 text-sm font-medium rounded-lg transition-colors ${
+                            pageNum === pagination.page
+                              ? 'bg-blue-600 text-white'
+                              : 'text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(pagination.totalPages, p + 1))}
+                    disabled={!pagination.hasNextPage || isLoading}
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* Add/Edit Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-white/20">
+      {isModalOpen && createPortal(
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in" style={{ animationFillMode: 'forwards' }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-white/20 animate-scale-in">
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white/95 backdrop-blur z-10">
               <h2 className="text-lg font-bold text-gray-900">
                 {editingId ? 'Edit Inventory Item' : 'Add New Item'}
               </h2>
-              <button onClick={handleCloseModal} className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-100 rounded-full transition-colors">
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-gray-200"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSave} className="p-6 space-y-6">
               {validationError && (
-                <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center text-red-600 text-sm">
+                <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center text-red-600 text-sm animate-pulse">
                   <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
                   {validationError}
                 </div>
@@ -551,11 +614,11 @@ export default function Inventory() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Product Name <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Product Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     required
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all"
                     placeholder="e.g. Organic Whole Milk"
                     value={newItem.productName || ''}
                     onChange={e => setNewItem({ ...newItem, productName: e.target.value })}
@@ -563,7 +626,7 @@ export default function Inventory() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Barcode / SKU</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Barcode / SKU</label>
                   <div className="relative">
                     <div className="flex gap-2">
                       <div className="relative flex-1">
@@ -571,8 +634,8 @@ export default function Inventory() {
                           type="text"
                           pattern="[0-9]*"
                           inputMode="numeric"
-                          className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono"
-                          placeholder="Scan or type numbers..."
+                          className="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono tracking-wide transition-all"
+                          placeholder="Scan..."
                           value={newItem.barcode || ''}
                           onChange={e => {
                             const val = e.target.value;
@@ -587,7 +650,7 @@ export default function Inventory() {
                         type="button"
                         onClick={() => handleBarcodeChange(newItem.barcode || '')}
                         disabled={isLookingUp || !newItem.barcode}
-                        className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
+                        className="p-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Sync from Catalog"
                       >
                         <RefreshCw className={`w-5 h-5 ${isLookingUp ? 'animate-spin' : ''}`} />
@@ -597,9 +660,9 @@ export default function Inventory() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit Type</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Unit Type</label>
                   <select
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white font-medium transition-all cursor-pointer"
                     value={newItem.unitName || 'pcs'}
                     onChange={e => setNewItem({ ...newItem, unitName: e.target.value })}
                   >
@@ -607,25 +670,27 @@ export default function Inventory() {
                     <option value="box">box</option>
                     <option value="bundle">bundle</option>
                     <option value="carton">carton</option>
+                    <option value="kg">kg</option>
+                    <option value="l">l</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Quantity <span className="text-red-500">*</span></label>
                   <input
                     type="number"
                     min="0"
                     required
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono font-medium transition-all"
                     value={newItem.remainingQty}
-                    onChange={e => setNewItem({ ...newItem, remainingQty: parseInt(e.target.value) })}
+                    onChange={e => setNewItem({ ...newItem, remainingQty: parseInt(e.target.value) || 0 })}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Branch <span className="text-red-500">*</span></label>
                   <select
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white disabled:bg-gray-50 disabled:text-gray-500"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white disabled:bg-gray-50 disabled:text-gray-500 font-medium transition-all cursor-pointer"
                     value={newItem.branch || ''}
                     onChange={e => setNewItem({ ...newItem, branch: e.target.value })}
                     required
@@ -643,33 +708,32 @@ export default function Inventory() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Mfg Date <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Mfg Date <span className="text-red-500">*</span></label>
                   <input
                     type="date"
                     required
-                    max={new Date().toISOString().split('T')[0]} // Cannot be in future
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm"
+                    max={new Date().toISOString().split('T')[0]}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all cursor-pointer"
                     value={newItem.mfgDate || ''}
                     onChange={e => {
                       const newMfg = e.target.value;
                       setNewItem({ ...newItem, mfgDate: newMfg });
-                      // Clear error if resolved
                       if (newItem.expDate && new Date(newItem.expDate) > new Date(newMfg)) {
                         setValidationError(null);
                       }
                     }}
                   />
-                  <p className="text-[10px] text-gray-400 mt-1">Date of manufacturing (cannot be future)</p>
+                  <p className="text-[10px] text-gray-400 mt-1 font-medium">Date of manufacturing</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Exp Date <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Exp Date <span className="text-red-500">*</span></label>
                   <input
                     type="date"
                     required
-                    min={newItem.mfgDate ? new Date(new Date(newItem.mfgDate).getTime() + 86400000).toISOString().split('T')[0] : ''} // Must be > Mfg
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500/20 text-sm ${newItem.mfgDate && newItem.expDate && new Date(newItem.expDate) <= new Date(newItem.mfgDate)
-                      ? 'border-red-300 focus:border-red-500 bg-red-50'
+                    min={newItem.mfgDate ? new Date(new Date(newItem.mfgDate).getTime() + 86400000).toISOString().split('T')[0] : ''}
+                    className={`w-full px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500/20 text-sm font-medium transition-all cursor-pointer ${newItem.mfgDate && newItem.expDate && new Date(newItem.expDate) <= new Date(newItem.mfgDate)
+                      ? 'border-red-300 focus:border-red-500 bg-red-50 text-red-700'
                       : 'border-gray-200 focus:border-blue-500'
                       }`}
                     value={newItem.expDate || ''}
@@ -677,7 +741,6 @@ export default function Inventory() {
                       const newExp = e.target.value;
                       setNewItem({ ...newItem, expDate: newExp });
 
-                      // Real-time validation
                       if (newItem.mfgDate && new Date(newExp) <= new Date(newItem.mfgDate)) {
                         setValidationError('Expiry Date must be strictly after Manufacturing Date.');
                       } else {
@@ -687,16 +750,16 @@ export default function Inventory() {
                   />
                   <p className="text-[10px] text-gray-400 mt-1">
                     {newItem.mfgDate && newItem.expDate && new Date(newItem.expDate) <= new Date(newItem.mfgDate)
-                      ? <span className="text-red-500 font-medium">Invalid: Must be after Mfg Date</span>
+                      ? <span className="text-red-600 font-bold flex items-center"><AlertTriangle className="w-3 h-3 mr-1" /> Invalid Date</span>
                       : "Best before / Expiry date"
                     }
                   </p>
                 </div>
 
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1.5">Notes</label>
                   <textarea
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all"
                     rows={3}
                     placeholder="Add any additional details..."
                     value={newItem.notes || ''}
@@ -709,22 +772,23 @@ export default function Inventory() {
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
+                  className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 text-sm font-bold transition-colors shadow-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSaving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center shadow-sm transition-all"
+                  disabled={createItem.isPending || updateItem.isPending}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-sm font-bold flex items-center shadow-lg shadow-blue-500/20 transition-all disabled:opacity-70"
                 >
-                  {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  {(createItem.isPending || updateItem.isPending) ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : (editingId ? <Edit2 className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />)}
                   {editingId ? 'Update Item' : 'Save Item'}
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete Confirmation Modal */}
@@ -747,8 +811,10 @@ export default function Inventory() {
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium shadow-sm transition-colors"
+                disabled={deleteItem.isPending}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-70 flex items-center"
               >
+                {deleteItem.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Delete Record
               </button>
             </div>

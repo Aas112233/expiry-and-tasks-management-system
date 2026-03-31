@@ -1,24 +1,50 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/material.dart';
+
 import '../api_client.dart';
 import '../services/database_helper.dart';
 import '../services/notification_service.dart';
 
 class InventoryProvider with ChangeNotifier {
+  InventoryProvider() {
+    _loadLocalData();
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((_) => checkConnectivity());
+    checkConnectivity();
+    _updatePendingCount();
+  }
+
   final ApiClient _apiClient = ApiClient();
   final DatabaseHelper _db = DatabaseHelper.instance;
   final NotificationService _notifications = NotificationService();
 
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+
   List<dynamic> _items = [];
   bool _isLoading = false;
   bool _isSyncing = false;
+  bool _isOnline = false;
   int _pendingCount = 0;
+  String? _syncError;
+  String? _errorMessage;
+  String _connectionMessage = 'Checking server connection...';
+
+  int _totalSyncItems = 0;
+  int _processedSyncItems = 0;
 
   List<dynamic> get items => _items;
   bool get isLoading => _isLoading;
   bool get isSyncing => _isSyncing;
+  bool get isOnline => _isOnline;
   int get pendingCount => _pendingCount;
+  String? get syncError => _syncError;
+  String? get errorMessage => _errorMessage;
+  String get connectionMessage => _connectionMessage;
+  int get totalSyncItems => _totalSyncItems;
+  int get processedSyncItems => _processedSyncItems;
 
   List<String> get uniqueProductNames {
     final names = _items
@@ -92,69 +118,49 @@ class InventoryProvider with ChangeNotifier {
     'Capsule',
     'Mask',
     'Glove',
-    'Bandage'
+    'Bandage',
   ];
 
-  InventoryProvider() {
-    // Load local data immediately on startup
-    _loadLocalData();
-    // Listen for connectivity changes to trigger auto-sync
-    Connectivity().onConnectivityChanged.listen((results) {
-      if (results.isNotEmpty && results.first != ConnectivityResult.none) {
-        syncPendingItems();
-      }
-    });
-    _updatePendingCount();
-  }
-
-  Future<void> _updatePendingCount() async {
-    final pending = await _db.getPendingActions();
-    _pendingCount = pending.length;
-    notifyListeners();
-  }
-
-  Future<void> _loadLocalData() async {
-    final cached = await _db.getCachedInventory();
-    if (cached.isNotEmpty) {
-      _items = cached
-          .map((map) => {
-                'id': map['id'],
-                'productName': map['product_name'],
-                'barcode': map['barcode'],
-                'remainingQty': map['quantity'],
-                'unitName': map['unit'],
-                'mfgDate': map['mfg_date'],
-                'expDate': map['exp_date'],
-                'branch': map['branch'],
-                'notes': map['notes'],
-              })
-          .toList();
-      _scheduleExpiryNotifications();
-      notifyListeners();
-    }
-  }
-
   List<dynamic> get expiredItems => _items.where((item) {
-        final expDate =
-            DateTime.tryParse(item['expDate'] ?? '') ?? DateTime.now();
+        final expDate = DateTime.tryParse(item['expDate']?.toString() ?? '') ??
+            DateTime.now();
         return expDate.isBefore(DateTime.now());
       }).toList();
 
   List<dynamic> get nearExpiryItems => _items.where((item) {
-        final expDate =
-            DateTime.tryParse(item['expDate'] ?? '') ?? DateTime.now();
+        final expDate = DateTime.tryParse(item['expDate']?.toString() ?? '') ??
+            DateTime.now();
         final daysToExpiry = expDate.difference(DateTime.now()).inDays;
         return daysToExpiry >= 0 && daysToExpiry <= 30;
       }).toList();
 
+  Future<void> checkConnectivity({bool notify = true}) async {
+    final health = await _apiClient.checkServerHealth(forceRefresh: true);
+    _isOnline = health.isOnline;
+    _connectionMessage = health.message;
+
+    if (notify) {
+      notifyListeners();
+    }
+
+    if (_isOnline) {
+      unawaited(syncPendingItems());
+    }
+
+    await _updatePendingCount();
+  }
+
   Future<void> fetchItems() async {
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
-    // Check connectivity
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult.first == ConnectivityResult.none) {
+    await checkConnectivity(notify: false);
+    if (!_isOnline) {
       await _loadLocalData();
+      _errorMessage = _items.isEmpty
+          ? _connectionMessage
+          : 'Showing saved inventory. $_connectionMessage';
       _isLoading = false;
       notifyListeners();
       return;
@@ -162,28 +168,13 @@ class InventoryProvider with ChangeNotifier {
 
     try {
       final response = await _apiClient.dio.get('/inventory');
-      final List<dynamic> rawData = response.data;
+      final rawData = List<dynamic>.from(response.data as List);
+      _items = rawData.map(_mapInventoryItem).toList();
 
-      // Normalize API data to match App's internal structure
-      _items = rawData
-          .map((item) => {
-                'id': item['id'],
-                'productName': item['productName'],
-                'barcode': item['barcode'],
-                'remainingQty': item['quantity'],
-                'unitName': item['unit'],
-                'mfgDate': item['mfgDate'],
-                'expDate': item['expDate'],
-                'branch': item['branch'],
-                'notes': item['notes'],
-              })
-          .toList();
-
-      // Mirror to local DB
       await _db.replaceAllInventory(rawData);
-      _scheduleExpiryNotifications();
-    } catch (e) {
-      debugPrint('Fetch error: $e');
+      await _scheduleExpiryNotifications();
+    } catch (error) {
+      _errorMessage = ApiClient.getUserMessage(error);
       await _loadLocalData();
     } finally {
       _isLoading = false;
@@ -192,31 +183,28 @@ class InventoryProvider with ChangeNotifier {
   }
 
   Future<void> addItem(Map<String, dynamic> itemData) async {
-    // Optimistic Logic: Save locally first
     await _db.addPendingAction('ADD', itemData);
 
-    // Add to current UI list immediately (Native feel)
     final tempItem = Map<String, dynamic>.from(itemData);
-    tempItem['id'] = DateTime.now().millisecondsSinceEpoch; // Temp ID
-    tempItem['productName'] = itemData['productName'];
+    tempItem['id'] = DateTime.now().millisecondsSinceEpoch.toString();
     tempItem['remainingQty'] = itemData['quantity'];
     tempItem['unitName'] = itemData['unit'];
     _items.insert(0, tempItem);
     notifyListeners();
 
-    // Try to sync
-    syncPendingItems();
-    _updatePendingCount();
+    await _updatePendingCount();
+    if (_isOnline) {
+      unawaited(syncPendingItems());
+    }
   }
 
   Future<void> updateItem(String id, Map<String, dynamic> itemData) async {
     await _db.addPendingAction('UPDATE', itemData, itemId: id);
 
-    // Update local UI
-    final index = _items.indexWhere((i) => i['id'].toString() == id);
+    final index = _items.indexWhere((item) => item['id'].toString() == id);
     if (index != -1) {
-      _items[index] = {
-        ..._items[index],
+      _items[index] = <String, dynamic>{
+        ...Map<String, dynamic>.from(_items[index] as Map),
         'productName': itemData['productName'],
         'remainingQty': itemData['quantity'],
         'unitName': itemData['unit'],
@@ -227,41 +215,47 @@ class InventoryProvider with ChangeNotifier {
       notifyListeners();
     }
 
-    syncPendingItems();
-    _updatePendingCount();
+    await _updatePendingCount();
+    if (_isOnline) {
+      unawaited(syncPendingItems());
+    }
   }
 
   Future<void> deleteItem(String id) async {
     await _db.addPendingAction('DELETE', {}, itemId: id);
-
-    // Remove from UI
-    _items.removeWhere((i) => i['id'].toString() == id);
+    _items.removeWhere((item) => item['id'].toString() == id);
     notifyListeners();
 
-    syncPendingItems();
-    _updatePendingCount();
+    await _updatePendingCount();
+    if (_isOnline) {
+      unawaited(syncPendingItems());
+    }
   }
 
   Future<void> syncPendingItems() async {
-    if (_isSyncing) return;
-
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult.first == ConnectivityResult.none) return;
+    if (_isSyncing || !_isOnline) {
+      return;
+    }
 
     final pending = await _db.getPendingActions();
-    if (pending.isEmpty) return;
+    if (pending.isEmpty) {
+      _syncError = null;
+      notifyListeners();
+      return;
+    }
 
     _isSyncing = true;
+    _syncError = null;
+    _totalSyncItems = pending.length;
+    _processedSyncItems = 0;
     notifyListeners();
 
-    for (var action in pending) {
+    for (final action in pending) {
       try {
-        final id = action['id'];
-        final type = action['action_type'];
-        final itemId = action['item_id'];
-        // Parse the manual toString() back or use jsonEncode earlier
-        // For simplicity in this edit, I'll fix the addPendingAction to use jsonEncode
-        final payload = _parsePayload(action['payload']);
+        final queueId = action['id'] as int;
+        final type = action['action_type']?.toString();
+        final itemId = action['item_id']?.toString();
+        final payload = _parsePayload(action['payload']?.toString() ?? '{}');
 
         if (type == 'ADD') {
           await _apiClient.dio.post('/inventory', data: payload);
@@ -271,53 +265,33 @@ class InventoryProvider with ChangeNotifier {
           await _apiClient.dio.delete('/inventory/$itemId');
         }
 
-        await _db.removePendingAction(id);
-      } catch (e) {
-        debugPrint('Sync individual item error: $e');
-        // Stop syncing if we hit an error (server down, etc)
+        await _db.removePendingAction(queueId);
+        _processedSyncItems += 1;
+        notifyListeners();
+      } catch (error) {
+        _syncError = ApiClient.getUserMessage(error);
         break;
       }
     }
 
     _isSyncing = false;
-    _updatePendingCount();
-    await fetchItems(); // Refresh with final server state
+    await _updatePendingCount();
+    await fetchItems();
 
-    // Notify user that sync is complete
-    await _notifications.showInstantNotification(
-      'Sync Complete',
-      'All pending items have been sent to the cloud.',
-    );
-  }
-
-  Future<void> _scheduleExpiryNotifications() async {
-    for (var item in _items) {
-      final expDateStr = item['expDate']?.toString() ?? '';
-      final expDate = DateTime.tryParse(expDateStr);
-      if (expDate != null) {
-        await _notifications.scheduleExpiryNotification(
-          id: item['id'].hashCode,
-          productName: item['productName'] ?? 'Product',
-          expiryDate: expDate,
-        );
-      }
-    }
-  }
-
-  // Robustly parse the payload from storage
-  Map<String, dynamic> _parsePayload(String payloadStr) {
-    try {
-      // Map.toString() isn't perfect JSON, so we should have saved with jsonEncode.
-      // I will update DatabaseHelper.addPendingAction to expect a Map and we use jsonEncode there.
-      return jsonDecode(payloadStr);
-    } catch (e) {
-      // Fallback/Legacy
-      return {};
+    if (_syncError == null && _processedSyncItems == _totalSyncItems) {
+      await _notifications.showInstantNotification(
+        'Sync Complete',
+        'All $_totalSyncItems pending inventory changes were uploaded.',
+      );
+    } else if (_syncError != null) {
+      await _notifications.showInstantNotification(
+        'Sync Paused',
+        'Uploaded $_processedSyncItems of $_totalSyncItems changes. $_syncError',
+      );
     }
   }
 
   Future<Map<String, dynamic>?> lookupCatalog(String barcode) async {
-    // 1. Check Offline Cache first
     final cached = await _db.lookupCatalogOffline(barcode);
     if (cached != null) {
       return {
@@ -326,21 +300,117 @@ class InventoryProvider with ChangeNotifier {
       };
     }
 
-    // 2. Try Online
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult.first != ConnectivityResult.none) {
-      try {
-        final response = await _apiClient.dio.get('/catalog/$barcode');
-        if (response.data != null) {
-          // Save to offline cache for next time
-          await _db.cacheCatalogItem(
-              barcode, response.data['productName'], response.data['unit']);
-          return response.data;
-        }
-      } catch (e) {
-        debugPrint('Catalog lookup error: $e');
-      }
+    await checkConnectivity(notify: false);
+    if (!_isOnline) {
+      return null;
     }
-    return null;
+
+    try {
+      final response = await _apiClient.dio.get('/catalog/$barcode');
+      final data = Map<String, dynamic>.from(response.data as Map);
+      await _db.cacheCatalogItem(
+        barcode,
+        data['productName']?.toString() ?? '',
+        data['unit']?.toString() ?? '',
+      );
+      return data;
+    } catch (error) {
+      debugPrint('Catalog lookup error: $error');
+      return null;
+    }
+  }
+
+  Future<void> _loadLocalData() async {
+    final cached = await _db.getCachedInventory();
+    if (cached.isEmpty) {
+      return;
+    }
+
+    _items = cached
+        .map((item) => {
+              'id': item['id'],
+              'productName': item['product_name'],
+              'barcode': item['barcode'],
+              'remainingQty': item['quantity'],
+              'quantity': item['quantity'],
+              'unitName': item['unit'],
+              'unit': item['unit'],
+              'mfgDate': item['mfg_date'],
+              'expDate': item['exp_date'],
+              'branch': item['branch'],
+              'notes': item['notes'],
+            })
+        .toList();
+
+    await _scheduleExpiryNotifications();
+    notifyListeners();
+  }
+
+  Future<void> _updatePendingCount() async {
+    final pending = await _db.getPendingActions();
+    _pendingCount = pending.length;
+    notifyListeners();
+  }
+
+  Future<void> _scheduleExpiryNotifications() async {
+    await _notifications.cancelAllNotifications();
+
+    final now = DateTime.now();
+    final itemsToSchedule = _items.where((item) {
+      final expDateStr = item['expDate']?.toString() ?? '';
+      final expDate = DateTime.tryParse(expDateStr);
+      if (expDate == null) {
+        return false;
+      }
+
+      return expDate.subtract(const Duration(days: 3)).isAfter(now);
+    }).toList()
+      ..sort((a, b) {
+        final dateA = DateTime.parse(a['expDate'].toString())
+            .subtract(const Duration(days: 3));
+        final dateB = DateTime.parse(b['expDate'].toString())
+            .subtract(const Duration(days: 3));
+        return dateA.compareTo(dateB);
+      });
+
+    for (final item in itemsToSchedule.take(50)) {
+      final expDate = DateTime.parse(item['expDate'].toString());
+      await _notifications.scheduleExpiryNotification(
+        id: item['id'].hashCode,
+        productName: item['productName']?.toString() ?? 'Product',
+        expiryDate: expDate,
+      );
+    }
+  }
+
+  Map<String, dynamic> _mapInventoryItem(dynamic item) {
+    final map = Map<String, dynamic>.from(item as Map);
+    return {
+      'id': map['id'],
+      'productName': map['productName'],
+      'barcode': map['barcode'],
+      'remainingQty': map['quantity'],
+      'quantity': map['quantity'],
+      'unitName': map['unit'],
+      'unit': map['unit'],
+      'mfgDate': map['mfgDate'],
+      'expDate': map['expDate'],
+      'branch': map['branch'],
+      'notes': map['notes'],
+    };
+  }
+
+  Map<String, dynamic> _parsePayload(String payload) {
+    try {
+      return Map<String, dynamic>.from(jsonDecode(payload) as Map);
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
   }
 }

@@ -22,8 +22,8 @@ function calculateExpiryStatus(expDateStr: string | Date): string {
 }
 
 /**
- * PRODUCTION INVENTORY CONTROLLER
- * Real database interactions with automatic status computation.
+ * PAGINATED INVENTORY CONTROLLER
+ * Real database interactions with automatic status computation and pagination.
  */
 
 export const getAllItems = async (req: Request, res: Response): Promise<void> => {
@@ -31,18 +31,62 @@ export const getAllItems = async (req: Request, res: Response): Promise<void> =>
         const user = (req as any).user;
         const where: any = {};
 
+        // Parse pagination params
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        const skip = (page - 1) * limit;
+
+        // Parse search params
+        const search = req.query.search as string;
+        const status = req.query.status as string;
+        const branchFilter = req.query.branch as string;
+
         // Non-admins can only see their own branch (unless they have global access 'all')
         if (user?.role !== 'Admin' && user?.branch !== 'all') {
             where.branch = user?.branch;
+        } else if (branchFilter && branchFilter !== 'all') {
+            where.branch = branchFilter;
         }
+
+        // Add search filter
+        if (search) {
+            where.OR = [
+                { productName: { contains: search, mode: 'insensitive' } },
+                { barcode: { contains: search, mode: 'insensitive' } },
+                { notes: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        // Add status filter
+        if (status && status !== 'all') {
+            where.status = status;
+        }
+
+        // Get total count for pagination
+        const totalCount = await withTransactionRetry<number>(() =>
+            (prisma as any).inventoryItem.count({ where }) as Promise<number>
+        );
 
         const items = await withTransactionRetry(() =>
             (prisma as any).inventoryItem.findMany({
                 where,
-                orderBy: { createdAt: 'desc' }
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: limit
             })
         );
-        res.json(items);
+
+        res.json({
+            items,
+            pagination: {
+                page,
+                limit,
+                totalCount,
+                totalPages: Math.ceil(totalCount / limit),
+                hasNextPage: page * limit < totalCount,
+                hasPrevPage: page > 1
+            }
+        });
     } catch (error) {
         console.error('[Inventory] Fetch error:', error);
         res.status(500).json({ message: 'Error fetching inventory', error });
