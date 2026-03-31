@@ -15,6 +15,7 @@ Given the React frontend, a **Node.js** with **Express.js** backend is recommend
 
 ## 2. Database Schema Design (MongoDB Atlas)
 
+
 We will use a Document-based model. Below are the proposed collections and their Mongoose schemas.
 
 ### Users Service / Collection
