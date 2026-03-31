@@ -34,6 +34,7 @@
     -   Fields: Email (`admin@company.com`), Password.
     -   Action: POST request to `/auth/login`.
 2.  **Session Management**:
+.
     -   On success: Save `token` and `user` details to Secure Storage.
     -   On app restart: Check if a valid token exists; if yes, skip to Dashboard.
 
