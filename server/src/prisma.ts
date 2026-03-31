@@ -1,7 +1,5 @@
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
-import { execSync } from 'child_process';
 
 /**
  * PRISMA MONGODB CONFIGURATION
