@@ -1,28 +1,64 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+coverage/
+.vercel/
+.turbo/
+.cache/
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+hs_err_pid*
+replay_pid*
 
-node_modules
-dist
-dist-ssr
+# Local environment files
+.env
+.env.*
+server/.env
+server/.env.*
+expiry_mobile/.env
+expiry_mobile/.env.*
+!.env.example
+!server/.env.example
+!expiry_mobile/.env.example
 *.local
+
+# Server runtime artifacts
+uploads/
+server/uploads/
+
+# Flutter / Dart generated files
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+**/build/
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-.env
-.env.*
+
+# Local deployment notes / secrets exports
 render_env.txt
 render_env*
