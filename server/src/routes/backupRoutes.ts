@@ -4,7 +4,12 @@ import multer from 'multer';
 import { restoreBackup, restoreBatch } from '../controllers/backupController';
 
 const router = express.Router();
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 10 * 1024 * 1024
+    }
+});
 
 // Full file restore
 router.post('/restore', upload.single('backupFile'), restoreBackup);

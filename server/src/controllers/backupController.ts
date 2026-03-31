@@ -1,7 +1,6 @@
 
 import { Request, Response } from 'express';
 import prisma, { withTransactionRetry } from '../prisma';
-import fs from 'fs';
 
 interface OldProduct {
     id: number;
@@ -249,21 +248,21 @@ export const restoreBackup = async (req: Request, res: Response) => {
     if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded' });
     }
-    const filePath = req.file.path;
+
     try {
-        const rawData = fs.readFileSync(filePath, 'utf-8');
+        const rawData = req.file.buffer.toString('utf-8');
         const data = JSON.parse(rawData);
+
         if (!data.products || !Array.isArray(data.products)) {
             throw new Error('Invalid backup format');
         }
+
         // Redirect to specialized batch logic for uniformity
         // Note: For large files, this should ideally be moved to an async job, but we'll stick to the request flow for now.
         // For simplicity in this legacy route, we'll just process it as one big batch.
         // In a real production app, we would use the same logic as restoreBatch.
-        fs.unlinkSync(filePath);
         res.status(200).json({ message: 'Backup file received. Please use the progress-bar tool for large files.' });
     } catch (error) {
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
         res.status(500).json({ message: 'Failed to process file', error: String(error) });
     }
 };
