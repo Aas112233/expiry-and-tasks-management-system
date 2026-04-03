@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/database_helper.dart';
+import 'package:share_plus/share_plus.dart';
 
 class LoginScreen extends StatefulWidget {
   final bool isAutoLogin;
@@ -14,6 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isExportingDb = false;
   bool _obscurePassword = true;
 
   @override
@@ -105,6 +108,35 @@ class _LoginScreenState extends State<LoginScreen> {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  Future<void> _handleDatabaseExport() async {
+    if (_isExportingDb) {
+      return;
+    }
+
+    setState(() => _isExportingDb = true);
+
+    try {
+      final archive = await DatabaseHelper.instance.exportDatabaseArchive();
+      await Share.shareXFiles(
+        [XFile(archive.path)],
+        text: 'ExpiryPro local database export',
+        subject: 'ExpiryPro database export',
+      );
+
+      if (mounted) {
+        _showInfoSnackBar('Database archive prepared. Choose where to save it.');
+      }
+    } catch (error) {
+      if (mounted) {
+        _showErrorSnackBar('Database export failed: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExportingDb = false);
+      }
+    }
   }
 
   @override
@@ -291,6 +323,50 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                       ),
                     ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: OutlinedButton.icon(
+                      onPressed: _isExportingDb ? null : _handleDatabaseExport,
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: Colors.orangeAccent.withValues(alpha: 0.6),
+                        ),
+                        foregroundColor: Colors.orangeAccent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      icon: _isExportingDb
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.orangeAccent,
+                              ),
+                            )
+                          : const Icon(Icons.ios_share_rounded),
+                      label: Text(
+                        _isExportingDb
+                            ? 'Preparing Database Export...'
+                            : 'Export Local Database',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Temporary support option: packages the local SQLite database for sharing.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.35),
+                      fontSize: 12,
+                    ),
+                  ),
 
                   const SizedBox(height: 40),
 

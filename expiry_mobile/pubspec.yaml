@@ -22,9 +22,12 @@ dependencies:
   shared_preferences: ^2.2.3
   sqflite: ^2.3.0
   path: ^1.8.3
+  path_provider: ^2.1.4
   connectivity_plus: ^6.0.3
   timezone: ^0.9.4
   flutter_dotenv: ^5.2.1
+  archive: ^3.6.1
+  share_plus: ^10.0.2
 
 dev_dependencies:
   flutter_test:

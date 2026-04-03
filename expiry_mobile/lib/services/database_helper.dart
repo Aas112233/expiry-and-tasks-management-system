@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:archive/archive_io.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
@@ -253,6 +256,43 @@ class DatabaseHelper {
     final db = _database;
     if (db != null) {
       await db.close();
+      _database = null;
     }
+  }
+
+  Future<File> exportDatabaseArchive() async {
+    final db = await database;
+    final dbPath = db.path;
+
+    try {
+      await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    } catch (_) {
+      // Best-effort flush before copying the database files.
+    }
+
+    await close();
+
+    final tempDir = await getTemporaryDirectory();
+    final timestamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .replaceAll('.', '-');
+    final archivePath = join(tempDir.path, 'expiry_app_db_$timestamp.zip');
+
+    final encoder = ZipFileEncoder()..create(archivePath);
+
+    try {
+      for (final suffix in ['', '-wal', '-shm']) {
+        final file = File('$dbPath$suffix');
+        if (await file.exists()) {
+          encoder.addFile(file, basename(file.path));
+        }
+      }
+    } finally {
+      encoder.close();
+      _database = await _initDB(basename(dbPath));
+    }
+
+    return File(archivePath);
   }
 }
