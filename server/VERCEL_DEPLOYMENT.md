@@ -10,6 +10,7 @@ Create a separate Vercel project and set the project root directory to:
 server
 ```
 
+
 Vercel's Express support detects `src/index.ts` automatically. The app is now exported for Vercel, while local development still uses `app.listen()`.
 
 Use this Vercel build command:
