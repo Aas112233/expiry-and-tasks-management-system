@@ -101,7 +101,9 @@ app.use('/api/branches', branchRoutes);
 
 app.get('/api/health', async (req: any, res: any) => {
     try {
-        if (dbStatus.isConnected) {
+        const ready = await initializeDb();
+
+        if (ready) {
             await withTransactionRetry(() => prisma.inventoryItem.count());
             res.status(200).json({
                 status: 'ok',
@@ -111,19 +113,9 @@ app.get('/api/health', async (req: any, res: any) => {
             return;
         }
 
-        if (dbStatus.isInitializing) {
-            res.status(503).json({
-                status: 'initializing',
-                database: 'connecting',
-                message: 'Database is still warming up. Please wait.',
-                timestamp: new Date()
-            });
-            return;
-        }
-
         res.status(503).json({
             status: 'error',
-            database: 'disconnected',
+            database: dbStatus.isInitializing ? 'connecting' : 'disconnected',
             error: dbStatus.error,
             timestamp: new Date()
         });
@@ -138,7 +130,21 @@ app.get('/api/health', async (req: any, res: any) => {
     }
 });
 
-void initializeDb();
+app.get('/', (_req, res) => {
+    res.status(200).json({
+        name: 'Expiry System Backend',
+        status: 'online',
+        health: '/api/health'
+    });
+});
+
+app.get(['/favicon.ico', '/favicon.png'], (_req, res) => {
+    res.status(204).end();
+});
+
+if (process.env.VERCEL !== '1') {
+    void initializeDb();
+}
 
 app.use(notFoundHandler);
 app.use(errorHandler);
