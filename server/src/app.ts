@@ -28,6 +28,7 @@ const configuredOrigins = (process.env.CORS_ORIGINS || '')
 
 const allowedOrigins = new Set([
     'https://etms.gt.tc',
+    'https://expiry-and-tasks-management-system.vercel.app',
     'http://localhost:5173',
     'http://localhost:3000',
     ...configuredOrigins,
