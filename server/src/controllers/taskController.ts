@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma, { withTransactionRetry } from '../prisma';
+import { sendErrorResponse } from '../lib/errors';
 
 /**
  * PAGINATED TASK CONTROLLER
@@ -84,8 +85,7 @@ export const getAllTasks = async (req: Request, res: Response): Promise<void> =>
             }
         });
     } catch (error) {
-        console.error('[Tasks] Fetch error:', error);
-        res.status(500).json({ message: 'Error fetching tasks', error });
+        sendErrorResponse(res, error, 'Unable to fetch tasks.', 'Tasks Fetch');
     }
 };
 
@@ -108,7 +108,9 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
 
         // If assignedToId is provided, let's fetch the user to ensure assigneeName is correct
         if (assignedToId) {
-            const user = await (prisma as any).user.findUnique({ where: { id: assignedToId } });
+            const user: any = await withTransactionRetry(() =>
+                (prisma as any).user.findUnique({ where: { id: assignedToId } })
+            );
             if (user) {
                 assigneeName = user.name;
             }
@@ -132,8 +134,7 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
         console.log(`[Tasks] Task created: ${title}`);
         res.status(201).json(task);
     } catch (error: any) {
-        console.error('[Tasks] Create error:', error);
-        res.status(500).json({ message: 'Error creating task', error: error.message });
+        sendErrorResponse(res, error, 'Unable to create task.', 'Tasks Create');
     }
 };
 
@@ -153,7 +154,9 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
         if (assignedToId !== undefined) {
             updateData.assignedToId = assignedToId || null;
             if (assignedToId) {
-                const user = await (prisma as any).user.findUnique({ where: { id: assignedToId } });
+                const user: any = await withTransactionRetry(() =>
+                    (prisma as any).user.findUnique({ where: { id: assignedToId } })
+                );
                 if (user) {
                     updateData.assigneeName = user.name;
                 }
@@ -168,9 +171,11 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
 
         const user = (req as any).user;
 
-        const existingTask = await (prisma as any).task.findUnique({
-            where: { id: id }
-        });
+        const existingTask: any = await withTransactionRetry(() =>
+            (prisma as any).task.findUnique({
+                where: { id: id }
+            })
+        );
 
         if (!existingTask) {
             res.status(404).json({ message: 'Task not found' });
@@ -197,8 +202,7 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
         console.log(`[Tasks] Task updated: ${id}`);
         res.json(task);
     } catch (error: any) {
-        console.error('[Tasks] Update error:', error);
-        res.status(500).json({ message: 'Error updating task', error: error.message });
+        sendErrorResponse(res, error, 'Unable to update task.', 'Tasks Update');
     }
 };
 
@@ -207,9 +211,11 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
         const { id } = req.params;
         const user = (req as any).user;
 
-        const existingTask = await (prisma as any).task.findUnique({
-            where: { id: id }
-        });
+        const existingTask: any = await withTransactionRetry(() =>
+            (prisma as any).task.findUnique({
+                where: { id: id }
+            })
+        );
 
         if (!existingTask) {
             res.status(404).json({ message: 'Task not found' });
@@ -225,7 +231,6 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
         console.log(`[Tasks] Task deleted: ${id}`);
         res.json({ message: 'Task deleted successfully' });
     } catch (error: any) {
-        console.error('[Tasks] Delete error:', error);
-        res.status(500).json({ message: 'Error deleting task', error: error.message });
+        sendErrorResponse(res, error, 'Unable to delete task.', 'Tasks Delete');
     }
 };

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma, { withTransactionRetry } from '../prisma';
 import { updateCatalogItem } from './catalogController';
+import { sendErrorResponse } from '../lib/errors';
 
 /**
  * HELPER: Status Calculator
@@ -88,8 +89,7 @@ export const getAllItems = async (req: Request, res: Response): Promise<void> =>
             }
         });
     } catch (error) {
-        console.error('[Inventory] Fetch error:', error);
-        res.status(500).json({ message: 'Error fetching inventory', error });
+        sendErrorResponse(res, error, 'Unable to fetch inventory.', 'Inventory Fetch');
     }
 };
 
@@ -143,8 +143,7 @@ export const createItem = async (req: Request, res: Response): Promise<void> => 
         console.log(`[Inventory] Item created: ${productName} (${computedStatus})`);
         res.status(201).json(item);
     } catch (error: any) {
-        console.error('[Inventory] Create error:', error);
-        res.status(500).json({ message: 'Error creating item', error: error.message });
+        sendErrorResponse(res, error, 'Unable to create inventory item.', 'Inventory Create');
     }
 };
 
@@ -177,9 +176,11 @@ export const updateItem = async (req: Request, res: Response): Promise<void> => 
         const user = (req as any).user;
 
         // Security check: Check if the item exists and belongs to the user's branch
-        const existingItem = await (prisma as any).inventoryItem.findUnique({
-            where: { id: id }
-        });
+        const existingItem: any = await withTransactionRetry(() =>
+            (prisma as any).inventoryItem.findUnique({
+                where: { id: id }
+            })
+        );
 
         if (!existingItem) {
             res.status(404).json({ message: 'Item not found' });
@@ -216,8 +217,7 @@ export const updateItem = async (req: Request, res: Response): Promise<void> => 
         console.log(`[Inventory] Item updated: ${id}`);
         res.json(item);
     } catch (error: any) {
-        console.error('[Inventory] Update error:', error);
-        res.status(500).json({ message: 'Error updating item', error: error.message });
+        sendErrorResponse(res, error, 'Unable to update inventory item.', 'Inventory Update');
     }
 };
 
@@ -226,9 +226,11 @@ export const deleteItem = async (req: Request, res: Response): Promise<void> => 
         const { id } = req.params;
         const user = (req as any).user;
 
-        const existingItem = await (prisma as any).inventoryItem.findUnique({
-            where: { id: id }
-        });
+        const existingItem: any = await withTransactionRetry(() =>
+            (prisma as any).inventoryItem.findUnique({
+                where: { id: id }
+            })
+        );
 
         if (!existingItem) {
             res.status(404).json({ message: 'Item not found' });
@@ -244,7 +246,6 @@ export const deleteItem = async (req: Request, res: Response): Promise<void> => 
         console.log(`[Inventory] Item deleted: ${id}`);
         res.json({ message: 'Item deleted successfully' });
     } catch (error: any) {
-        console.error('[Inventory] Delete error:', error);
-        res.status(500).json({ message: 'Error deleting item', error: error.message });
+        sendErrorResponse(res, error, 'Unable to delete inventory item.', 'Inventory Delete');
     }
 };

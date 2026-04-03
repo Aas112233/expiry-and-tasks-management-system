@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
-import prisma from '../prisma';
+import prisma, { withTransactionRetry } from '../prisma';
+import { sendErrorResponse } from '../lib/errors';
 
 export const getDashboardStats = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -24,26 +25,28 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
             totalTasks,
             expiringSoon,
             pendingTasks
-        ] = await Promise.all([
-            prisma.inventoryItem.count({ where }),
-            (prisma as any).task.count({ where: taskWhere }),
-            prisma.inventoryItem.count({
-                where: {
-                    ...where,
-                    expDate: {
-                        gte: today,
-                        lte: next30Days
-                    },
-                    status: { not: 'Expired' }
-                }
-            }),
-            (prisma as any).task.count({
-                where: {
-                    ...taskWhere,
-                    status: { in: ['Open', 'In Progress'] }
-                }
-            })
-        ]);
+        ] = await withTransactionRetry(() =>
+            Promise.all([
+                prisma.inventoryItem.count({ where }),
+                (prisma as any).task.count({ where: taskWhere }),
+                prisma.inventoryItem.count({
+                    where: {
+                        ...where,
+                        expDate: {
+                            gte: today,
+                            lte: next30Days
+                        },
+                        status: { not: 'Expired' }
+                    }
+                }),
+                (prisma as any).task.count({
+                    where: {
+                        ...taskWhere,
+                        status: { in: ['Open', 'In Progress'] }
+                    }
+                })
+            ])
+        );
 
         res.json({
             overview: [
@@ -55,7 +58,7 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
         });
 
     } catch (error) {
-        res.status(500).json({ message: 'Error fetching stats', error });
+        sendErrorResponse(res, error, 'Unable to fetch dashboard stats.', 'Analytics Overview');
     }
 };
 
@@ -72,18 +75,20 @@ export const getExpiryTrends = async (req: Request, res: Response): Promise<void
         }
 
         // Fetch items expiring in the next 30 days
-        const items = await prisma.inventoryItem.findMany({
-            where: {
-                ...where,
-                expDate: {
-                    gte: today,
-                    lte: thirtyDaysLater
+        const items = await withTransactionRetry(() =>
+            prisma.inventoryItem.findMany({
+                where: {
+                    ...where,
+                    expDate: {
+                        gte: today,
+                        lte: thirtyDaysLater
+                    }
+                },
+                select: {
+                    expDate: true
                 }
-            },
-            select: {
-                expDate: true
-            }
-        });
+            })
+        );
 
         // Group by date (YYYY-MM-DD)
         const trendMap = new Map<string, number>();
@@ -111,7 +116,7 @@ export const getExpiryTrends = async (req: Request, res: Response): Promise<void
 
         res.json(formatted);
     } catch (error) {
-        res.status(500).json({ message: 'Error fetching trends', error });
+        sendErrorResponse(res, error, 'Unable to fetch expiry trends.', 'Analytics Trends');
     }
 };
 
@@ -121,20 +126,24 @@ export const getBranchDistribution = async (req: Request, res: Response): Promis
 
         // If not Admin (and no global access), they only see one branch anyway
         if (user?.role !== 'Admin' && user?.branch !== 'all') {
-            const count = await prisma.inventoryItem.count({
-                where: { branch: user.branch }
-            });
+            const count = await withTransactionRetry(() =>
+                prisma.inventoryItem.count({
+                    where: { branch: user.branch }
+                })
+            );
             res.json([{ name: user.branch, value: count }]);
             return;
         }
 
         // Group inventory count by branch
-        const distribution = await prisma.inventoryItem.groupBy({
-            by: ['branch'],
-            _count: {
-                id: true
-            }
-        });
+        const distribution = await withTransactionRetry(() =>
+            prisma.inventoryItem.groupBy({
+                by: ['branch'],
+                _count: {
+                    id: true
+                }
+            })
+        );
 
         // Format for Recharts { name, value }
         const formatted = distribution.map(item => ({
@@ -144,6 +153,6 @@ export const getBranchDistribution = async (req: Request, res: Response): Promis
 
         res.json(formatted);
     } catch (error) {
-        res.status(500).json({ message: 'Error fetching branch distribution', error });
+        sendErrorResponse(res, error, 'Unable to fetch branch distribution.', 'Analytics Branch Distribution');
     }
 };

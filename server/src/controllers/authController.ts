@@ -2,7 +2,8 @@ import { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 
-import prisma from '../prisma';
+import prisma, { withTransactionRetry } from '../prisma';
+import { sendErrorResponse } from '../lib/errors';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey123';
 const ACCESS_TOKEN_TTL = '24h';
@@ -41,10 +42,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const user = await (prisma as any).user.findUnique({
-            where: { email },
-            include: { modulePermissions: true }
-        });
+        const user: any = await withTransactionRetry(() =>
+            (prisma as any).user.findUnique({
+                where: { email },
+                include: { modulePermissions: true }
+            })
+        );
 
         if (!user) {
             res.status(401).json({ message: 'Invalid credentials' });
@@ -60,8 +63,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         console.log(`[Auth] User logged in: ${user.email}`);
         res.json(buildAuthResponse(user));
     } catch (error) {
-        console.error('[Auth] Login Error:', error);
-        res.status(500).json({ message: 'Internal server error during login' });
+        sendErrorResponse(res, error, 'Unable to log in right now.', 'Auth Login');
     }
 };
 
@@ -92,10 +94,12 @@ export const refreshSession = async (req: Request, res: Response): Promise<void>
             }
         }
 
-        const user = await (prisma as any).user.findUnique({
-            where: { id: decoded.id },
-            include: { modulePermissions: true }
-        });
+        const user: any = await withTransactionRetry(() =>
+            (prisma as any).user.findUnique({
+                where: { id: decoded.id },
+                include: { modulePermissions: true }
+            })
+        );
 
         if (!user) {
             res.status(404).json({ message: 'User not found.' });
@@ -104,8 +108,7 @@ export const refreshSession = async (req: Request, res: Response): Promise<void>
 
         res.json(buildAuthResponse(user));
     } catch (error) {
-        console.error('[Auth] Refresh Error:', error);
-        res.status(401).json({ message: 'Unable to refresh the session. Please log in again.' });
+        sendErrorResponse(res, error, 'Unable to refresh the session. Please log in again.', 'Auth Refresh');
     }
 };
 
@@ -119,7 +122,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const existingUser = await (prisma as any).user.findUnique({ where: { email } });
+        const existingUser = await withTransactionRetry(() =>
+            (prisma as any).user.findUnique({ where: { email } })
+        );
         if (existingUser) {
             res.status(400).json({ message: 'Email already in use' });
             return;
@@ -127,23 +132,24 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const user = await (prisma as any).user.create({
-            data: {
-                name,
-                email,
-                password: hashedPassword,
-                branch,
-                role: role || 'Staff',
-                status: 'Active',
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-                permissions: JSON.stringify({ Inventory: 'read', Tasks: 'read' })
-            }
-        });
+        const user: any = await withTransactionRetry(() =>
+            (prisma as any).user.create({
+                data: {
+                    name,
+                    email,
+                    password: hashedPassword,
+                    branch,
+                    role: role || 'Staff',
+                    status: 'Active',
+                    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                    permissions: JSON.stringify({ Inventory: 'read', Tasks: 'read' })
+                }
+            })
+        );
 
         res.status(201).json({ message: 'User registered successfully', userId: user.id });
     } catch (error) {
-        console.error('[Auth] Registration Error:', error);
-        res.status(500).json({ message: 'Error creating user' });
+        sendErrorResponse(res, error, 'Unable to create user.', 'Auth Register');
     }
 };
 
@@ -155,10 +161,12 @@ export const verifyUser = async (req: any, res: Response): Promise<void> => {
             return;
         }
 
-        const user = await (prisma as any).user.findUnique({
-            where: { id: userId },
-            include: { modulePermissions: true }
-        });
+        const user: any = await withTransactionRetry(() =>
+            (prisma as any).user.findUnique({
+                where: { id: userId },
+                include: { modulePermissions: true }
+            })
+        );
         if (!user) {
             res.status(404).json({ message: 'User not found' });
             return;
@@ -166,7 +174,7 @@ export const verifyUser = async (req: any, res: Response): Promise<void> => {
 
         res.json(sanitizeUser(user));
     } catch (error) {
-        res.status(500).json({ message: 'Error verifying session' });
+        sendErrorResponse(res, error, 'Unable to verify session.', 'Auth Verify');
     }
 };
 

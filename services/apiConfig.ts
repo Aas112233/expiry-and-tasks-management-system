@@ -1,12 +1,10 @@
-import { useToast } from '../ToastContext';
-
 // Get API base URL from environment with validation
 const getApiBaseUrl = (): string => {
-    const envUrl = import.meta.env.VITE_API_BASE_URL;
+    const envUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 
     // Validate environment URL
     if (envUrl && envUrl.startsWith('http')) {
-        return envUrl;
+        return envUrl.replace(/\/+$/, '');
     }
 
     // Development fallback
@@ -23,6 +21,15 @@ const getApiBaseUrl = (): string => {
 };
 
 export const API_BASE_URL = getApiBaseUrl();
+
+export const assertApiBaseUrl = () => {
+    if (!API_BASE_URL) {
+        throw new APIError(
+            'VITE_API_BASE_URL is missing. Configure the frontend environment before using the app.',
+            500
+        );
+    }
+};
 
 export const getAuthHeaders = () => {
     const token = localStorage.getItem('token');
@@ -47,6 +54,8 @@ export const apiFetch = async <T>(
     options: RequestInit = {},
     retryCount: number = 0
 ): Promise<T> => {
+    assertApiBaseUrl();
+
     const authHeaders = getAuthHeaders();
 
     // Debug log for development

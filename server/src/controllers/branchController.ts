@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma, { withTransactionRetry } from '../prisma';
+import { sendErrorResponse } from '../lib/errors';
 
 /**
  * PRODUCTION BRANCH CONTROLLER
@@ -43,8 +44,7 @@ export const getAllBranches = async (req: Request, res: Response): Promise<void>
 
         res.json(branches);
     } catch (error) {
-        console.error('[Branches] Fetch error:', error);
-        res.status(500).json({ message: 'Error fetching branches', error });
+        sendErrorResponse(res, error, 'Unable to fetch branches.', 'Branches Fetch');
     }
 };
 
@@ -69,7 +69,7 @@ export const createBranch = async (req: Request, res: Response): Promise<void> =
         );
         res.status(201).json(newBranch);
     } catch (error) {
-        res.status(500).json({ message: 'Error creating branch', error });
+        sendErrorResponse(res, error, 'Unable to create branch.', 'Branches Create');
     }
 };
 
@@ -85,7 +85,7 @@ export const updateBranch = async (req: Request, res: Response): Promise<void> =
         );
         res.json(branch);
     } catch (error) {
-        res.status(500).json({ message: 'Error updating branch', error });
+        sendErrorResponse(res, error, 'Unable to update branch.', 'Branches Update');
     }
 };
 
@@ -121,7 +121,7 @@ export const deleteBranch = async (req: Request, res: Response): Promise<void> =
         await withTransactionRetry(() => (prisma as any).branch.delete({ where: { id } }));
         res.json({ message: 'Branch deleted successfully' });
     } catch (error) {
-        res.status(500).json({ message: 'Error deleting branch', error });
+        sendErrorResponse(res, error, 'Unable to delete branch.', 'Branches Delete');
     }
 };
 
@@ -174,7 +174,6 @@ export const syncBranches = async (req: Request, res: Response): Promise<void> =
         });
 
     } catch (error) {
-        console.error('[Branches] Sync Error:', error);
-        res.status(500).json({ message: 'Error syncing branches', error });
+        sendErrorResponse(res, error, 'Unable to sync branches.', 'Branches Sync');
     }
 };

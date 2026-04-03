@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
-import prisma from '../prisma';
+import prisma, { withTransactionRetry } from '../prisma';
+import { sendErrorResponse } from '../lib/errors';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey123';
 
@@ -58,12 +59,14 @@ export const authorizePermission = (module: string, action: 'read' | 'write') =>
 
         try {
             // 2. Check the new UserPermission table (Source of Truth)
-            const dbPermission = await (prisma as any).userPermission.findFirst({
-                where: {
-                    userId: user.id,
-                    module: module
-                }
-            });
+            const dbPermission: any = await withTransactionRetry(() =>
+                (prisma as any).userPermission.findFirst({
+                    where: {
+                        userId: user.id,
+                        module: module
+                    }
+                })
+            );
 
             if (dbPermission) {
                 const hasAccess = action === 'write' ? dbPermission.canWrite : (dbPermission.canRead || dbPermission.canWrite);
@@ -89,8 +92,7 @@ export const authorizePermission = (module: string, action: 'read' | 'write') =>
             console.warn(`[Auth] Permission denied for user ${user.email} on ${module}:${action}`);
             res.status(403).json({ message: `Access denied: You do not have ${action} permission for ${module}.` });
         } catch (e) {
-            console.error('[Auth] Permission check error:', e);
-            res.status(403).json({ message: 'Access denied: Permission check failed.' });
+            sendErrorResponse(res, e, 'Permission check failed.', 'Auth Permission');
         }
     };
 };

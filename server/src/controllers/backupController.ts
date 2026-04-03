@@ -1,6 +1,7 @@
 
 import { Request, Response } from 'express';
 import prisma, { withTransactionRetry } from '../prisma';
+import { sendErrorResponse } from '../lib/errors';
 
 interface OldProduct {
     id: number;
@@ -75,7 +76,9 @@ export const restoreBatch = async (req: Request, res: Response) => {
             }
         }
 
-        const dbCount = await (prisma as any).inventoryItem.count();
+        const dbCount = await withTransactionRetry(() =>
+            (prisma as any).inventoryItem.count()
+        );
         console.log(`[Backup] Current DB Item Count: ${dbCount}`);
 
         // 2. PHASE 2: PREPARE CONTENT CRITERIA & CALCULATE EXISTING DUPLICATES
@@ -233,11 +236,7 @@ export const restoreBatch = async (req: Request, res: Response) => {
         });
 
     } catch (error: any) {
-        console.error('[Backup] CRITICAL BATCH ERROR:', error);
-        res.status(500).json({
-            message: 'Internal server error during processing',
-            error: error?.message || 'Unknown database error'
-        });
+        sendErrorResponse(res, error, 'Unable to process backup restore.', 'Backup Restore Batch');
     }
 };
 
@@ -246,7 +245,8 @@ export const restoreBatch = async (req: Request, res: Response) => {
  */
 export const restoreBackup = async (req: Request, res: Response) => {
     if (!req.file) {
-        return res.status(400).json({ message: 'No file uploaded' });
+        res.status(400).json({ message: 'No file uploaded' });
+        return;
     }
 
     try {
@@ -263,6 +263,6 @@ export const restoreBackup = async (req: Request, res: Response) => {
         // In a real production app, we would use the same logic as restoreBatch.
         res.status(200).json({ message: 'Backup file received. Please use the progress-bar tool for large files.' });
     } catch (error) {
-        res.status(500).json({ message: 'Failed to process file', error: String(error) });
+        sendErrorResponse(res, error, 'Unable to process backup file.', 'Backup Restore File');
     }
 };

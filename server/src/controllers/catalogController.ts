@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma, { withTransactionRetry } from '../prisma';
+import { sendErrorResponse } from '../lib/errors';
 
 export const getCatalogItemByBarcode = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -24,8 +25,7 @@ export const getCatalogItemByBarcode = async (req: Request, res: Response): Prom
 
         res.json(item);
     } catch (error: any) {
-        console.error('[Catalog] Fetch error:', error);
-        res.status(500).json({ message: `Failed to fetch catalog: ${error.message}` });
+        sendErrorResponse(res, error, 'Unable to fetch catalog item.', 'Catalog Fetch By Barcode');
     }
 };
 
@@ -38,8 +38,7 @@ export const getAllCatalogItems = async (req: Request, res: Response): Promise<v
         );
         res.json(items);
     } catch (error: any) {
-        console.error('[Catalog] Fetch all error:', error);
-        res.status(500).json({ message: `Failed to load catalog items: ${error.message}` });
+        sendErrorResponse(res, error, 'Unable to load catalog items.', 'Catalog Fetch All');
     }
 };
 
@@ -59,8 +58,7 @@ export const createCatalogItem = async (req: Request, res: Response): Promise<vo
         );
         res.status(201).json(newItem);
     } catch (error: any) {
-        console.error('[Catalog] Create error:', error);
-        res.status(500).json({ message: `Failed to create catalog item: ${error.message}` });
+        sendErrorResponse(res, error, 'Unable to create catalog item.', 'Catalog Create');
     }
 };
 
@@ -77,8 +75,7 @@ export const manualUpdateCatalogItem = async (req: Request, res: Response): Prom
         );
         res.json(updated);
     } catch (error: any) {
-        console.error('[Catalog] Manual update error:', error);
-        res.status(500).json({ message: `Failed to update catalog item: ${error.message}` });
+        sendErrorResponse(res, error, 'Unable to update catalog item.', 'Catalog Update');
     }
 };
 
@@ -92,8 +89,7 @@ export const deleteCatalogItem = async (req: Request, res: Response): Promise<vo
         );
         res.json({ message: 'Catalog item deleted successfully' });
     } catch (error: any) {
-        console.error('[Catalog] Delete error:', error);
-        res.status(500).json({ message: `Failed to delete item: ${error.message}` });
+        sendErrorResponse(res, error, 'Unable to delete catalog item.', 'Catalog Delete');
     }
 };
 
@@ -194,7 +190,6 @@ export const syncCatalogWithInventory = async (req: Request, res: Response): Pro
             totalInventoryItemsProcessed: result.totalProcessed
         });
     } catch (error: any) {
-        console.error('[Catalog] Sync error:', error);
-        res.status(500).json({ message: `Sync failed: ${error.message}` });
+        sendErrorResponse(res, error, 'Unable to sync catalog with inventory.', 'Catalog Sync');
     }
 };

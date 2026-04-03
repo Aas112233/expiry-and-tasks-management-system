@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import morgan from 'morgan';
+import { randomUUID } from 'crypto';
 import authRoutes from './routes/authRoutes';
 import inventoryRoutes from './routes/inventoryRoutes';
 import taskRoutes from './routes/taskRoutes';
@@ -9,7 +11,13 @@ import branchRoutes from './routes/branchRoutes';
 import analyticsRoutes from './routes/analyticsRoutes';
 import backupRoutes from './routes/backupRoutes';
 import catalogRoutes from './routes/catalogRoutes';
-import prisma, { withTransactionRetry, initializeDb, dbStatus } from './prisma';
+import prisma, {
+    DatabaseUnavailableError,
+    withTransactionRetry,
+    initializeDb,
+    dbStatus
+} from './prisma';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 const app = express();
 
@@ -41,14 +49,45 @@ app.use(cors({
             return;
         }
 
-        callback(null, true);
+        callback(new Error(`Origin not allowed by CORS: ${origin}`));
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 }));
 
-app.use(express.json());
+app.use((req, res, next) => {
+    const requestId = req.headers['x-request-id']?.toString() || randomUUID();
+    req.requestId = requestId;
+    res.setHeader('X-Request-ID', requestId);
+    next();
+});
+
+app.use(morgan(process.env.NODE_ENV === 'production'
+    ? ':method :url :status :response-time ms req_id=:req[x-request-id]'
+    : 'dev'));
+
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+app.use('/api', async (req: any, res: any, next: any) => {
+    if (req.path === '/health') {
+        next();
+        return;
+    }
+
+    const ready = await initializeDb();
+    if (ready) {
+        next();
+        return;
+    }
+
+    res.status(503).json({
+        message: 'Database is unavailable. Please try again shortly.',
+        database: dbStatus.isInitializing ? 'connecting' : 'disconnected',
+        error: dbStatus.error
+    });
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/inventory', inventoryRoutes);
@@ -89,7 +128,7 @@ app.get('/api/health', async (req: any, res: any) => {
         });
     } catch (error) {
         console.error('Health check failed:', error);
-        res.status(503).json({
+        res.status(error instanceof DatabaseUnavailableError ? 503 : 503).json({
             status: 'error',
             database: 'disconnected',
             timestamp: new Date(),
@@ -99,5 +138,8 @@ app.get('/api/health', async (req: any, res: any) => {
 });
 
 void initializeDb();
+
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 export default app;

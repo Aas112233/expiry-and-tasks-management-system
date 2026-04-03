@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma, { withTransactionRetry } from '../prisma';
 import * as bcrypt from 'bcryptjs';
+import { sendErrorResponse } from '../lib/errors';
 
 const syncPermissions = async (userId: string, permissionsJson: string | any) => {
     try {
@@ -8,21 +9,25 @@ const syncPermissions = async (userId: string, permissionsJson: string | any) =>
         const perms = typeof permissionsJson === 'string' ? JSON.parse(permissionsJson) : permissionsJson;
 
         // Remove old permissions first
-        await (prisma as any).userPermission.deleteMany({ where: { userId } });
+        await withTransactionRetry(() =>
+            (prisma as any).userPermission.deleteMany({ where: { userId } })
+        );
 
         // Create new ones
         const modules = Object.keys(perms);
         for (const module of modules) {
             const modPerms = perms[module];
             if (Array.isArray(modPerms)) {
-                await (prisma as any).userPermission.create({
-                    data: {
-                        userId,
-                        module,
-                        canRead: modPerms.includes('read') || modPerms.includes('write'),
-                        canWrite: modPerms.includes('write')
-                    }
-                });
+                await withTransactionRetry(() =>
+                    (prisma as any).userPermission.create({
+                        data: {
+                            userId,
+                            module,
+                            canRead: modPerms.includes('read') || modPerms.includes('write'),
+                            canWrite: modPerms.includes('write')
+                        }
+                    })
+                );
             }
         }
     } catch (e) {
@@ -59,7 +64,7 @@ export const getAllEmployees = async (req: Request, res: Response): Promise<void
         );
         res.json(employees);
     } catch (error) {
-        res.status(500).json({ message: 'Error fetching employees', error });
+        sendErrorResponse(res, error, 'Unable to fetch employees.', 'Employees Fetch');
     }
 };
 
@@ -68,7 +73,7 @@ export const createEmployee = async (req: Request, res: Response): Promise<void>
         let { name, email, role, branch, phone, employeeId, password, status, permissions } = req.body;
         email = email?.toLowerCase().trim();
 
-        const existingUser = await withTransactionRetry(() =>
+        const existingUser: any = await withTransactionRetry(() =>
             prisma.user.findUnique({ where: { email } })
         );
 
@@ -108,7 +113,7 @@ export const createEmployee = async (req: Request, res: Response): Promise<void>
 
         res.status(201).json(employee);
     } catch (error) {
-        res.status(500).json({ message: 'Error creating employee', error });
+        sendErrorResponse(res, error, 'Unable to create employee.', 'Employees Create');
     }
 };
 
@@ -131,9 +136,11 @@ export const updateEmployee = async (req: Request, res: Response): Promise<void>
 
         const user = (req as any).user;
 
-        const existingEmp = await (prisma as any).user.findUnique({
-            where: { id: id }
-        });
+        const existingEmp: any = await withTransactionRetry(() =>
+            (prisma as any).user.findUnique({
+                where: { id: id }
+            })
+        );
 
         if (!existingEmp) {
             res.status(404).json({ message: 'Employee not found' });
@@ -164,8 +171,7 @@ export const updateEmployee = async (req: Request, res: Response): Promise<void>
 
         res.json(employee);
     } catch (error: any) {
-        console.error("Error updating employee:", error);
-        res.status(500).json({ message: 'Error updating employee', error: error.message });
+        sendErrorResponse(res, error, 'Unable to update employee.', 'Employees Update');
     }
 };
 
@@ -175,9 +181,11 @@ export const deleteEmployee = async (req: Request, res: Response): Promise<void>
         const user = (req as any).user;
         const loggedInUserId = (req as any).user?.id;
 
-        const existingEmp = await (prisma as any).user.findUnique({
-            where: { id: id }
-        });
+        const existingEmp: any = await withTransactionRetry(() =>
+            (prisma as any).user.findUnique({
+                where: { id: id }
+            })
+        );
 
         if (!existingEmp) {
             res.status(404).json({ message: 'Employee not found' });
@@ -199,7 +207,7 @@ export const deleteEmployee = async (req: Request, res: Response): Promise<void>
         );
         res.json({ message: 'Employee deleted' });
     } catch (error) {
-        res.status(500).json({ message: 'Error deleting employee', error });
+        sendErrorResponse(res, error, 'Unable to delete employee.', 'Employees Delete');
     }
 };
 
@@ -224,8 +232,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
 
         res.json({ message: 'Password reset successfully' });
     } catch (error) {
-        console.error('Error resetting password:', error);
-        res.status(500).json({ message: 'Error resetting password', error });
+        sendErrorResponse(res, error, 'Unable to reset password.', 'Employees Reset Password');
     }
 };
 

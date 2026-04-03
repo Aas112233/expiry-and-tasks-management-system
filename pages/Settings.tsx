@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { User, Bell, Shield, Globe, Save, Lock, Mail, Smartphone, Database, Upload, FileJson, AlertCircle, CheckCircle, RefreshCw, Loader2 } from 'lucide-react';
-import { API_BASE_URL } from '../services/apiConfig';
+import { apiFetch } from '../services/apiConfig';
 import { useAuth } from '../AuthContext';
 import { useBranch } from '../BranchContext';
 import { useToast } from '../ToastContext';
@@ -59,10 +59,13 @@ export default function Settings() {
 
             try {
                 const token = localStorage.getItem('token');
-                const response = await fetch(`${API_BASE_URL}/backup/restore-batch`, {
+                const result = await apiFetch<{
+                    imported: number;
+                    skipped: number;
+                    skipReasons?: string[];
+                }>('/backup/restore-batch', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({
@@ -70,10 +73,6 @@ export default function Settings() {
                         overrideBranch: restoreMode === 'specific' ? targetBranch : undefined
                     })
                 });
-
-                if (!response.ok) throw new Error('Batch processing failed');
-
-                const result = await response.json();
                 console.log(`[Frontend] Batch ${Math.floor(i / BATCH_SIZE) + 1} Result:`, result);
 
                 if (result.skipReasons && result.skipReasons.length > 0) {
