@@ -11,6 +11,9 @@ import branchRoutes from './routes/branchRoutes';
 import analyticsRoutes from './routes/analyticsRoutes';
 import backupRoutes from './routes/backupRoutes';
 import catalogRoutes from './routes/catalogRoutes';
+import mobileRoutes from './routes/mobileRoutes';
+import { generalLimiter } from './middleware/rateLimiter';
+import { mobileHeaders } from './lib/apiResponse';
 import prisma, {
     DatabaseUnavailableError,
     withTransactionRetry,
@@ -68,6 +71,12 @@ app.use(morgan(process.env.NODE_ENV === 'production'
     ? ':method :url :status :response-time ms req_id=:req[x-request-id]'
     : 'dev'));
 
+// Apply general rate limiter
+app.use('/api/', generalLimiter);
+
+// Add mobile-compatible security headers
+app.use('/api/', mobileHeaders);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
@@ -98,6 +107,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/branches', branchRoutes);
+app.use('/api/mobile', mobileRoutes);
 
 app.get('/api/health', async (req: any, res: any) => {
     try {

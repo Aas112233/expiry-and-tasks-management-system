@@ -108,16 +108,18 @@ export const restoreBatch = async (req: Request, res: Response) => {
             return;
         }
 
-        // Content-based duplicate detection (Name, Barcode, Branch, ExpDate)
+        // Content-based duplicate detection (Barcode, MfgDate, ExpDate)
+        // Duplicates are identified by: same barcode + same manufacture date + same expiry date
         // We normalize all dates to midnight of the day for consistency
-        const orConditions: any[] = productsToProcess.map((p: any) => ({
-            AND: [
-                { productName: String(p.productName).substring(0, 255).trim() },
-                { barcode: p.barcode ? String(p.barcode).substring(0, 100).trim() : null },
-                { branch: overrideBranch ? overrideBranch.trim() : String(p.branchName).substring(0, 100).trim() },
-                { expDate: new Date(new Date(p.expireDate).setHours(0, 0, 0, 0)) }
-            ]
-        }));
+        const orConditions: any[] = productsToProcess
+            .filter((p: any) => p.barcode) // Only items with barcode can be checked for duplicates
+            .map((p: any) => ({
+                AND: [
+                    { barcode: String(p.barcode).substring(0, 100).trim() },
+                    { mfgDate: new Date(new Date(p.mfgDate).setHours(0, 0, 0, 0)) },
+                    { expDate: new Date(new Date(p.expireDate).setHours(0, 0, 0, 0)) }
+                ]
+            }));
 
         let existingHashes = new Set<string>();
 
@@ -125,16 +127,17 @@ export const restoreBatch = async (req: Request, res: Response) => {
             const existingItems: any[] = await withTransactionRetry(() =>
                 (prisma as any).inventoryItem.findMany({
                     where: { OR: orConditions },
-                    select: { productName: true, barcode: true, branch: true, expDate: true }
+                    select: { barcode: true, mfgDate: true, expDate: true }
                 })
             );
 
             console.log(`[Backup] Found ${existingItems.length} matching items in DB.`);
 
             existingItems.forEach(item => {
-                // Create a content hash for duplicate detection (Normalized Date)
-                const normalizedDate = new Date(item.expDate).setHours(0, 0, 0, 0);
-                const hash = `${String(item.productName).toLowerCase().trim()}|${item.barcode || ''}|${String(item.branch).toLowerCase().trim()}|${normalizedDate}`;
+                // Create a content hash for duplicate detection (Normalized Dates)
+                const normalizedMfgDate = new Date(item.mfgDate).setHours(0, 0, 0, 0);
+                const normalizedExpDate = new Date(item.expDate).setHours(0, 0, 0, 0);
+                const hash = `${String(item.barcode).toLowerCase().trim()}|${normalizedMfgDate}|${normalizedExpDate}`;
                 existingHashes.add(hash);
             });
         } catch (queryError: any) {
@@ -151,6 +154,7 @@ export const restoreBatch = async (req: Request, res: Response) => {
             try {
                 const mfgDate = new Date(product.mfgDate);
                 const expDate = new Date(product.expireDate);
+                const normalizedMfgTimestamp = new Date(mfgDate).setHours(0, 0, 0, 0);
                 const normalizedExpTimestamp = new Date(expDate).setHours(0, 0, 0, 0);
                 const normalizedExpDate = new Date(normalizedExpTimestamp);
 
@@ -160,23 +164,28 @@ export const restoreBatch = async (req: Request, res: Response) => {
                 const noteKey = product.id ? `Imported from backup. Old ID: ${product.id}` : null;
 
                 // STRICT CONTENT-BASED DUPLICATE CHECK
-                // (Name, Barcode, Branch, and EXACT EXPIRY DATE must all match for it to be a duplicate)
-                const contentHash = `${productName.toLowerCase().trim()}|${barcode || ''}|${branch.toLowerCase().trim()}|${normalizedExpTimestamp}`;
+                // Duplicates are identified by: same barcode + same manufacture date + same expiry date
+                // Items without barcode cannot be checked for duplicates
+                const contentHash = barcode
+                    ? `${barcode.toLowerCase().trim()}|${normalizedMfgTimestamp}|${normalizedExpTimestamp}`
+                    : null;
 
-                // 1. Check if already in Database
-                if (existingHashes.has(contentHash)) {
-                    skipDetails.push(`"${productName}" (ID: ${product.id || 'N/A'}): Skipping (Identical item with same expiry already in database)`);
+                // 1. Check if already in Database (only for items with barcode)
+                if (contentHash && existingHashes.has(contentHash)) {
+                    skipDetails.push(`"${productName}" (Barcode: ${barcode || 'N/A'}): Skipping (Identical item with same barcode, manufacture date, and expiry date already in database)`);
                     skipCount++;
                     continue;
                 }
 
                 // 2. Check if duplicated within this backup file (same batch)
-                if (seenInCurrentBatch.has(contentHash)) {
-                    skipDetails.push(`"${productName}": Skipping (Same item/expiry appears multiple times in file)`);
+                if (contentHash && seenInCurrentBatch.has(contentHash)) {
+                    skipDetails.push(`"${productName}" (Barcode: ${barcode || 'N/A'}): Skipping (Same barcode, manufacture date, and expiry appears multiple times in file)`);
                     skipCount++;
                     continue;
                 }
-                seenInCurrentBatch.add(contentHash);
+                if (contentHash) {
+                    seenInCurrentBatch.add(contentHash);
+                }
 
                 // 3. Final validation of dates
                 if (isNaN(mfgDate.getTime()) || isNaN(expDate.getTime())) {
@@ -237,6 +246,45 @@ export const restoreBatch = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         sendErrorResponse(res, error, 'Unable to process backup restore.', 'Backup Restore Batch');
+    }
+};
+
+/**
+ * Export full inventory as backup JSON (Admin only)
+ */
+export const exportBackup = async (req: Request, res: Response) => {
+    try {
+        console.log('[Backup] Exporting full inventory backup...');
+
+        const allItems: any[] = await withTransactionRetry(() =>
+            (prisma as any).inventoryItem.findMany({
+                orderBy: { createdAt: 'desc' }
+            })
+        );
+
+        const backupData = {
+            products: allItems.map((item: any) => ({
+                id: item.id,
+                productName: item.productName,
+                branchName: item.branch,
+                productType: item.unit,
+                barcode: item.barcode,
+                initialQuantity: item.quantity,
+                currentQuantity: item.quantity,
+                mfgDate: item.mfgDate.toISOString(),
+                expireDate: item.expDate.toISOString(),
+                createdAt: item.createdAt?.toISOString() || new Date().toISOString()
+            }))
+        };
+
+        console.log(`[Backup] Exported ${backupData.products.length} items`);
+
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="etms-backup-${new Date().toISOString().split('T')[0]}.json"`);
+        res.json(backupData);
+    } catch (error: any) {
+        console.error('[Backup] Export failed:', error);
+        sendErrorResponse(res, error, 'Unable to export backup.', 'Backup Export');
     }
 };
 

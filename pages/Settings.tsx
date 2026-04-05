@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { User, Bell, Shield, Globe, Save, Lock, Mail, Smartphone, Database, Upload, FileJson, AlertCircle, CheckCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { User, Bell, Shield, Globe, Save, Lock, Mail, Smartphone, Database, Upload, FileJson, AlertCircle, CheckCircle, RefreshCw, Loader2, Download } from 'lucide-react';
 import { apiFetch } from '../services/apiConfig';
 import { useAuth } from '../AuthContext';
 import { useBranch } from '../BranchContext';
@@ -20,10 +20,11 @@ const SettingsSection = ({ title, icon: Icon, children, isActive, onClick }: any
 );
 
 export default function Settings() {
-    const { hasPermission } = useAuth();
+    const { hasPermission, user } = useAuth();
     const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState('general');
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [downloadLoading, setDownloadLoading] = useState(false);
 
     // Backup Restore State
     const [restoreFile, setRestoreFile] = useState<File | null>(null);
@@ -34,6 +35,66 @@ export default function Settings() {
     const { branches } = useBranch();
     const [restoreMode, setRestoreMode] = useState<'original' | 'specific'>('original');
     const [targetBranch, setTargetBranch] = useState<string>('');
+
+    const handleDownloadBackup = async () => {
+        if (user?.role !== 'Admin') {
+            showToast('Only admin users can download backups', 'error');
+            return;
+        }
+
+        setDownloadLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            const baseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ||
+                (import.meta.env.DEV ? 'http://localhost:5000/api' : '');
+
+            if (!baseUrl) {
+                throw new Error('API base URL is not configured');
+            }
+
+            const response = await fetch(`${baseUrl}/backup/export`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                if (response.status === 403) {
+                    throw new Error('Access denied. Admin privileges required.');
+                }
+                throw new Error('Failed to download backup');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+
+            // Extract filename from Content-Disposition header or use default
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = `etms-backup-${new Date().toISOString().split('T')[0]}.json`;
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+                if (filenameMatch && filenameMatch[1]) {
+                    filename = filenameMatch[1].replace(/"/g, '');
+                }
+            }
+
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            showToast('Backup downloaded successfully!', 'success');
+        } catch (error: any) {
+            console.error('Backup download error:', error);
+            showToast(error.message || 'Failed to download backup', 'error');
+        } finally {
+            setDownloadLoading(false);
+        }
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -243,6 +304,45 @@ export default function Settings() {
                                         <div>
                                             <h2 className="text-xl font-bold text-gray-900">Backup & Restore</h2>
                                             <p className="text-sm text-gray-500">Manage data persistence and disaster recovery.</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Download Backup Section */}
+                                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-6">
+                                        <div className="flex items-start gap-4">
+                                            <div className="p-3 bg-white rounded-xl shadow-sm border border-blue-100 flex items-center justify-center">
+                                                <Download className="w-6 h-6 text-blue-600" />
+                                            </div>
+                                            <div className="flex-1 text-left">
+                                                <h3 className="text-base font-bold text-gray-900">Download Backup</h3>
+                                                <p className="text-sm text-gray-600 mt-1">Export all inventory data as a JSON file. This backup can be used to restore your system later.</p>
+
+                                                {user?.role === 'Admin' ? (
+                                                    <button
+                                                        onClick={handleDownloadBackup}
+                                                        disabled={downloadLoading}
+                                                        className="mt-4 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
+                                                    >
+                                                        {downloadLoading ? (
+                                                            <>
+                                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                                Preparing Download...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Download className="w-4 h-4" />
+                                                                Download JSON Backup
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                ) : (
+                                                    <div className="mt-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                                                        <p className="text-xs text-amber-700 font-medium">
+                                                            🔒 Only admin users can download backups
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
 
