@@ -99,6 +99,7 @@ export interface ExpiredItem {
   serverStatus?: string;
   createdAt?: string;
   updatedAt?: string;
+  _optimistic?: boolean;
 }
 
 // API Endpoint: /api/branches

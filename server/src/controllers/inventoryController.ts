@@ -22,6 +22,37 @@ function calculateExpiryStatus(expDateStr: string | Date): string {
     return '60+';
 }
 
+/**
+ * HELPER: Build date-range filter for a given status category.
+ * This ensures filters are always up-to-date based on today's date,
+ * rather than relying on a stored (potentially stale) status string.
+ */
+function buildStatusDateFilter(status: string): any {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const addDays = (d: Date, days: number) => {
+        const result = new Date(d);
+        result.setDate(result.getDate() + days);
+        return result;
+    };
+
+    switch (status) {
+        case 'Expired':
+            return { expDate: { lte: today } };
+        case '0-15 days':
+            return { AND: [{ expDate: { gt: today } }, { expDate: { lte: addDays(today, 15) } }] };
+        case '16-45 days':
+            return { AND: [{ expDate: { gt: addDays(today, 15) } }, { expDate: { lte: addDays(today, 45) } }] };
+        case '46-60 days':
+            return { AND: [{ expDate: { gt: addDays(today, 45) } }, { expDate: { lte: addDays(today, 60) } }] };
+        case '60+':
+            return { expDate: { gt: addDays(today, 60) } };
+        default:
+            return {};
+    }
+}
+
 type InventoryFilterArgs = {
     user: any;
     search?: string;
@@ -79,8 +110,10 @@ function buildInventoryWhere({
         andFilters.push({ OR: EMPTY_VALUE_FILTERS.map((filter) => ({ notes: filter })) });
     }
 
+    // Use date-range filter instead of stored status string
     if (status && status !== 'all') {
-        andFilters.push({ status });
+        const dateFilter = buildStatusDateFilter(status);
+        andFilters.push(dateFilter);
     }
 
     return andFilters.length > 0 ? { AND: andFilters } : {};
@@ -108,26 +141,14 @@ export const getAllItems = async (req: Request, res: Response): Promise<void> =>
         const barcodeState = req.query.barcodeState as string;
         const notesState = req.query.notesState as string;
 
-        const baseWhere = buildInventoryWhere({
-            user,
-            search,
-            branch: branchFilter,
-            unit: unitFilter,
-            barcodeState,
-            notesState
-        });
+        // Shared filter args (excluding status) for summary counts
+        const sharedArgs = { user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState };
 
-        const where = buildInventoryWhere({
-            user,
-            search,
-            status,
-            branch: branchFilter,
-            unit: unitFilter,
-            barcodeState,
-            notesState
-        });
+        // Build the base where (without status) and full where (with status)
+        const baseWhere = buildInventoryWhere(sharedArgs);
+        const where = buildInventoryWhere({ ...sharedArgs, status });
 
-        // Get total count for pagination
+        // Get total count and summary counts in parallel using date-range filters
         const [totalCount, allCount, expiredCount, criticalCount, warningCount, goodCount, safeCount] = await Promise.all([
             withTransactionRetry<number>(() =>
                 (prisma as any).inventoryItem.count({ where }) as Promise<number>
@@ -136,23 +157,23 @@ export const getAllItems = async (req: Request, res: Response): Promise<void> =>
                 (prisma as any).inventoryItem.count({ where: baseWhere }) as Promise<number>
             ),
             withTransactionRetry<number>(() =>
-                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: 'Expired' }) }) as Promise<number>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ ...sharedArgs, status: 'Expired' }) }) as Promise<number>
             ),
             withTransactionRetry<number>(() =>
-                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: '0-15 days' }) }) as Promise<number>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ ...sharedArgs, status: '0-15 days' }) }) as Promise<number>
             ),
             withTransactionRetry<number>(() =>
-                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: '16-45 days' }) }) as Promise<number>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ ...sharedArgs, status: '16-45 days' }) }) as Promise<number>
             ),
             withTransactionRetry<number>(() =>
-                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: '46-60 days' }) }) as Promise<number>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ ...sharedArgs, status: '46-60 days' }) }) as Promise<number>
             ),
             withTransactionRetry<number>(() =>
-                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: '60+' }) }) as Promise<number>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ ...sharedArgs, status: '60+' }) }) as Promise<number>
             )
         ]);
 
-        const items = await withTransactionRetry(() =>
+        const items: any[] = await withTransactionRetry(() =>
             (prisma as any).inventoryItem.findMany({
                 where,
                 orderBy: { createdAt: 'desc' },
@@ -161,10 +182,16 @@ export const getAllItems = async (req: Request, res: Response): Promise<void> =>
             })
         );
 
+        // Recompute live status for every returned item
+        const itemsWithLiveStatus = items.map((item: any) => ({
+            ...item,
+            status: calculateExpiryStatus(item.expDate)
+        }));
+
         const totalPages = Math.max(1, Math.ceil(totalCount / limit));
 
         res.json({
-            items,
+            items: itemsWithLiveStatus,
             pagination: {
                 page,
                 limit,

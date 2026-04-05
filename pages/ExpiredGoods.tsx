@@ -13,7 +13,7 @@ import { useInventoryShortcuts } from '../hooks/useKeyboardShortcuts';
 import { PageSkeleton } from '../components/Skeleton';
 import { InventoryVirtualTable } from '../components/VirtualTable';
 
-const ITEMS_PER_PAGE = 20;
+const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 200];
 type SortableInventoryKey = keyof ExpiredItem | 'diffDays';
 type InventoryRow = ExpiredItem & { diffDays: number; _optimistic?: boolean };
 
@@ -25,6 +25,7 @@ export default function Inventory() {
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [localBranchFilter, setLocalBranchFilter] = useState('All Branches');
   const [filterUnit, setFilterUnit] = useState('All Units');
@@ -50,7 +51,7 @@ export default function Inventory() {
   // React Query hooks
   const { data, isLoading, error, refetch } = useInventory({
     page: currentPage,
-    limit: ITEMS_PER_PAGE,
+    limit: itemsPerPage,
     search: debouncedQuery || undefined,
     status: filterStatus !== 'All' ? filterStatus : undefined,
     branch: selectedBranch !== 'All Branches'
@@ -350,11 +351,11 @@ export default function Inventory() {
 
   const bucketTabs = [
     { label: 'All Items', value: 'All', count: data?.summary?.all ?? data?.pagination?.totalCount ?? 0 },
-    { label: 'Expired', value: ExpiryStatus.Expired, count: data?.summary?.expired ?? statusCounts[ExpiryStatus.Expired] ?? 0 },
-    { label: 'Critical (0-15d)', value: ExpiryStatus.Critical, count: data?.summary?.critical ?? statusCounts[ExpiryStatus.Critical] ?? 0 },
-    { label: 'Warning (16-45d)', value: ExpiryStatus.Warning, count: data?.summary?.warning ?? statusCounts[ExpiryStatus.Warning] ?? 0 },
-    { label: 'Good (46-60d)', value: ExpiryStatus.Good, count: data?.summary?.good ?? statusCounts[ExpiryStatus.Good] ?? 0 },
-    { label: 'Safe (60+d)', value: ExpiryStatus.Safe, count: data?.summary?.safe ?? statusCounts[ExpiryStatus.Safe] ?? 0 },
+    { label: 'Expired', value: ExpiryStatus.Expired, count: data?.summary?.expired ?? 0 },
+    { label: 'Critical (0-15d)', value: ExpiryStatus.Critical, count: data?.summary?.critical ?? 0 },
+    { label: 'Warning (16-45d)', value: ExpiryStatus.Warning, count: data?.summary?.warning ?? 0 },
+    { label: 'Good (46-60d)', value: ExpiryStatus.Good, count: data?.summary?.good ?? 0 },
+    { label: 'Safe (60+d)', value: ExpiryStatus.Safe, count: data?.summary?.safe ?? 0 },
   ];
 
   const pagination = data?.pagination;
@@ -412,103 +413,81 @@ export default function Inventory() {
 
       {/* Control Bar - Glassmorphism */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-4 hover:shadow-md transition-shadow">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative">
-                <select
-                  className={`pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm appearance-none cursor-pointer ${selectedBranch !== 'All Branches' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-50 text-gray-700'}`}
-                  value={selectedBranch !== 'All Branches' ? selectedBranch : localBranchFilter}
-                  onChange={(e) => setLocalBranchFilter(e.target.value)}
-                  disabled={selectedBranch !== 'All Branches'}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <select
+                className={`pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm appearance-none cursor-pointer ${selectedBranch !== 'All Branches' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-50 text-gray-700'}`}
+                value={selectedBranch !== 'All Branches' ? selectedBranch : localBranchFilter}
+                onChange={(e) => setLocalBranchFilter(e.target.value)}
+                disabled={selectedBranch !== 'All Branches'}
+              >
+                {availableBranches.map((branchName) => (
+                  <option key={branchName} value={branchName}>{branchName}</option>
+                ))}
+              </select>
+              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+
+            <select
+              className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              value={filterUnit}
+              onChange={(e) => setFilterUnit(e.target.value)}
+            >
+              {availableUnits.map((unitName) => (
+                <option key={unitName} value={unitName}>{unitName}</option>
+              ))}
+            </select>
+
+            <select
+              className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              value={barcodeFilter}
+              onChange={(e) => setBarcodeFilter(e.target.value as 'all' | 'with-barcode' | 'without-barcode')}
+            >
+              <option value="all">All Barcode States</option>
+              <option value="with-barcode">With Barcode</option>
+              <option value="without-barcode">No Barcode</option>
+            </select>
+
+            <select
+              className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              value={notesFilter}
+              onChange={(e) => setNotesFilter(e.target.value as 'all' | 'with-notes' | 'without-notes')}
+            >
+              <option value="all">All Notes States</option>
+              <option value="with-notes">With Notes</option>
+              <option value="without-notes">No Notes</option>
+            </select>
+
+            <button
+              onClick={clearFilters}
+              className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Clear Filters
+            </button>
+
+            <button
+              onClick={() => refetch()}
+              disabled={isLoading}
+              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {activeFilterChips.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {activeFilterChips.map((chip) => (
+                <span
+                  key={chip}
+                  className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700"
                 >
-                  {availableBranches.map((branchName) => (
-                    <option key={branchName} value={branchName}>{branchName}</option>
-                  ))}
-                </select>
-                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-
-              <select
-                className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                value={filterUnit}
-                onChange={(e) => setFilterUnit(e.target.value)}
-              >
-                {availableUnits.map((unitName) => (
-                  <option key={unitName} value={unitName}>{unitName}</option>
-                ))}
-              </select>
-
-              <select
-                className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                value={barcodeFilter}
-                onChange={(e) => setBarcodeFilter(e.target.value as 'all' | 'with-barcode' | 'without-barcode')}
-              >
-                <option value="all">All Barcode States</option>
-                <option value="with-barcode">With Barcode</option>
-                <option value="without-barcode">No Barcode</option>
-              </select>
-
-              <select
-                className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                value={notesFilter}
-                onChange={(e) => setNotesFilter(e.target.value as 'all' | 'with-notes' | 'without-notes')}
-              >
-                <option value="all">All Notes States</option>
-                <option value="with-notes">With Notes</option>
-                <option value="without-notes">No Notes</option>
-              </select>
-
-              <button
-                onClick={clearFilters}
-                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Clear Filters
-              </button>
-
-              <button
-                onClick={() => refetch()}
-                disabled={isLoading}
-                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                title="Refresh"
-              >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              </button>
+                  {chip}
+                </span>
+              ))}
             </div>
-
-            {activeFilterChips.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {activeFilterChips.map((chip) => (
-                  <span
-                    key={chip}
-                    className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700"
-                  >
-                    {chip}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Filtered Total</div>
-              <div className="mt-1 text-xl font-bold text-gray-900">{pagination?.totalCount ?? 0}</div>
-              <div className="text-xs text-gray-500">Rows matching the active server filters</div>
-            </div>
-            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Loaded Page</div>
-              <div className="mt-1 text-xl font-bold text-gray-900">{processedItems.length}</div>
-              <div className="text-xs text-gray-500">
-                {pagination ? `Page ${pagination.page} of ${pagination.totalPages}` : 'Current server page'}
-              </div>
-            </div>
-            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Rows Per Page</div>
-              <div className="mt-1 text-xl font-bold text-gray-900">{visibleItems.length}</div>
-              <div className="text-xs text-gray-500">Current page after sorting</div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Tabs */}
@@ -578,16 +557,14 @@ export default function Inventory() {
                     <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('notes')}>
                       Notes
                     </th>
-                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('updatedAt')}>
-                      Server Data
-                    </th>
+
                     <th className="px-6 py-4 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {visibleItems.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
+                      <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
                         <div className="flex flex-col items-center justify-center">
                           <Package className="w-12 h-12 text-gray-200 mb-3" />
                           <p className="font-medium">No inventory found</p>
@@ -645,7 +622,7 @@ export default function Inventory() {
                                item.diffDays === 0 ? 'Today' : `${item.diffDays}d Left`}
                             </span>
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                              Live: {item.status}
+                              Live: {Math.abs(item.diffDays)} Days
                             </span>
                           </div>
                         </td>
@@ -656,13 +633,7 @@ export default function Inventory() {
                             <span className="text-xs italic text-gray-400">No notes</span>
                           )}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col gap-1 text-[11px] text-gray-500">
-                            <span>Server status: <span className="font-semibold text-gray-700">{item.serverStatus || item.status}</span></span>
-                            <span>Created: {item.createdAt ? new Date(item.createdAt).toLocaleString('en-GB') : 'N/A'}</span>
-                            <span>Updated: {item.updatedAt ? new Date(item.updatedAt).toLocaleString('en-GB') : 'N/A'}</span>
-                          </div>
-                        </td>
+
                         <td className="px-6 py-4 text-right">
                           {hasPermission('Inventory', 'write') && (
                             <div className="flex justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -688,59 +659,79 @@ export default function Inventory() {
               </table>
             </div>
 
-            {/* Pagination Controls */}
-            {pagination && pagination.totalPages > 1 && (
+                        {/* Pagination Controls */}
+            {pagination && pagination.totalCount > 0 && (
               <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
-                <div className="text-sm text-gray-500">
-                  Showing {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.totalCount)} of {pagination.totalCount}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={!pagination.hasPrevPage || isLoading}
-                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                  
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                      let pageNum: number;
-                      if (pagination.totalPages <= 5) {
-                        pageNum = i + 1;
-                      } else if (pagination.page <= 3) {
-                        pageNum = i + 1;
-                      } else if (pagination.page >= pagination.totalPages - 2) {
-                        pageNum = pagination.totalPages - 4 + i;
-                      } else {
-                        pageNum = pagination.page - 2 + i;
-                      }
-                      
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => setCurrentPage(pageNum)}
-                          disabled={isLoading}
-                          className={`w-9 h-9 text-sm font-medium rounded-lg transition-colors ${
-                            pageNum === pagination.page
-                              ? 'bg-blue-600 text-white'
-                              : 'text-gray-600 hover:bg-gray-100'
-                          }`}
-                        >
-                          {pageNum}
-                        </button>
-                      );
-                    })}
+                <div className="flex items-center gap-4 text-sm text-gray-500">
+                  <span>
+                    Showing {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.totalCount)} of {pagination.totalCount}
+                  </span>
+                  <div className="flex items-center gap-2 border-l border-gray-300 pl-4">
+                    <span>Rows per page:</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => {
+                        setItemsPerPage(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="bg-white border text-gray-700 border-gray-300 rounded-md text-sm py-1 px-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    >
+                      {ROWS_PER_PAGE_OPTIONS.map(option => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
                   </div>
-
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(pagination.totalPages, p + 1))}
-                    disabled={!pagination.hasNextPage || isLoading}
-                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
                 </div>
+                
+                {pagination.totalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={!pagination.hasPrevPage || isLoading}
+                      className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                        let pageNum: number;
+                        if (pagination.totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (pagination.page <= 3) {
+                          pageNum = i + 1;
+                        } else if (pagination.page >= pagination.totalPages - 2) {
+                          pageNum = pagination.totalPages - 4 + i;
+                        } else {
+                          pageNum = pagination.page - 2 + i;
+                        }
+                        
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setCurrentPage(pageNum)}
+                            disabled={isLoading}
+                            className={`w-9 h-9 text-sm font-medium rounded-lg transition-colors ${
+                              pageNum === pagination.page
+                                ? 'bg-blue-600 text-white'
+                                : 'text-gray-600 hover:bg-gray-100'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(pagination.totalPages, p + 1))}
+                      disabled={!pagination.hasNextPage || isLoading}
+                      className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -984,3 +975,4 @@ export default function Inventory() {
     </div>
   );
 }
+

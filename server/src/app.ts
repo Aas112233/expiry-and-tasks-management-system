@@ -57,7 +57,7 @@ app.use(cors({
     credentials: true
 }));
 
-app.use((req, res, next) => {
+app.use((req: any, res, next) => {
     const requestId = req.headers['x-request-id']?.toString() || randomUUID();
     req.requestId = requestId;
     res.setHeader('X-Request-ID', requestId);

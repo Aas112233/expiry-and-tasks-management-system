@@ -25,12 +25,12 @@ export default function Reports() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [fetchedItems, fetchedTasks] = await Promise.all([
-                inventoryService.getAllItems(),
-                taskService.getAllTasks()
+            const [fetchedInventory, fetchedTasks] = await Promise.all([
+                inventoryService.getAllItems({ limit: 1000000 }), // high limit for full reports export
+                taskService.getAllTasks({ limit: 1000000 })
             ]);
-            setItems(fetchedItems);
-            setTasks(fetchedTasks);
+            setItems(fetchedInventory.items || []);
+            setTasks(fetchedTasks.tasks || []);
         } catch (error) {
             console.error("Failed to load report data", error);
         } finally {
