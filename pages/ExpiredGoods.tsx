@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
-import { Plus, Search, Filter, Scan, Save, X, AlertCircle, Trash2, Edit2, AlertTriangle, Package, Loader2, RefreshCw, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Filter, Scan, Save, X, AlertCircle, Trash2, Edit2, AlertTriangle, Package, Loader2, RefreshCw, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { ExpiryStatus, ExpiredItem, Role } from '../types';
 import { useBranch } from '../BranchContext';
@@ -14,6 +14,8 @@ import { PageSkeleton } from '../components/Skeleton';
 import { InventoryVirtualTable } from '../components/VirtualTable';
 
 const ITEMS_PER_PAGE = 20;
+type SortableInventoryKey = keyof ExpiredItem | 'diffDays';
+type InventoryRow = ExpiredItem & { diffDays: number; _optimistic?: boolean };
 
 export default function Inventory() {
   const location = useLocation();
@@ -25,7 +27,10 @@ export default function Inventory() {
   const [currentPage, setCurrentPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [localBranchFilter, setLocalBranchFilter] = useState('All Branches');
-  const [sortConfig, setSortConfig] = useState<{ key: keyof ExpiredItem; direction: 'asc' | 'desc' } | null>({ key: 'status' as any, direction: 'asc' });
+  const [filterUnit, setFilterUnit] = useState('All Units');
+  const [barcodeFilter, setBarcodeFilter] = useState<'all' | 'with-barcode' | 'without-barcode'>('all');
+  const [notesFilter, setNotesFilter] = useState<'all' | 'with-notes' | 'without-notes'>('all');
+  const [sortConfig, setSortConfig] = useState<{ key: SortableInventoryKey; direction: 'asc' | 'desc' } | null>({ key: 'status', direction: 'asc' });
   
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,9 +53,12 @@ export default function Inventory() {
     limit: ITEMS_PER_PAGE,
     search: debouncedQuery || undefined,
     status: filterStatus !== 'All' ? filterStatus : undefined,
-    branch: selectedBranch !== 'All Branches' 
-      ? selectedBranch 
-      : (localBranchFilter !== 'All Branches' ? localBranchFilter : undefined)
+    branch: selectedBranch !== 'All Branches'
+      ? selectedBranch
+      : (localBranchFilter !== 'All Branches' ? localBranchFilter : undefined),
+    unit: filterUnit !== 'All Units' ? filterUnit : undefined,
+    barcodeState: barcodeFilter !== 'all' ? barcodeFilter : undefined,
+    notesState: notesFilter !== 'all' ? notesFilter : undefined
   });
 
   const createItem = useCreateInventoryItem();
@@ -63,7 +71,7 @@ export default function Inventory() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedQuery, filterStatus, selectedBranch, localBranchFilter]);
+  }, [debouncedQuery, filterStatus, selectedBranch, localBranchFilter, filterUnit, barcodeFilter, notesFilter]);
 
   // Sync with global branch context
   useEffect(() => {
@@ -202,7 +210,7 @@ export default function Inventory() {
     }
   };
 
-  const handleSort = (key: keyof ExpiredItem) => {
+  const handleSort = (key: SortableInventoryKey) => {
     let direction: 'asc' | 'desc' = 'asc';
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc';
@@ -211,22 +219,25 @@ export default function Inventory() {
   };
 
   const handleExportExcel = () => {
-    if (!data?.items.length) {
+    if (!visibleItems.length) {
       alert("No data available to export.");
       return;
     }
 
-    const exportData = data.items.map(item => ({
+    const exportData = visibleItems.map(item => ({
       'ID': item.id,
       'Product Name': item.productName,
       'Barcode/SKU': item.barcode || 'N/A',
       'Remaining Qty': item.remainingQty,
       'Unit': item.unitName,
-      'Expiry Date': new Date(item.expDate).toLocaleDateString('en-GB'),
       'Mfg Date': new Date(item.mfgDate).toLocaleDateString('en-GB'),
+      'Expiry Date': new Date(item.expDate).toLocaleDateString('en-GB'),
       'Branch': item.branch,
-      'Status': item.status,
-      'Notes': item.notes || ''
+      'Live Status': item.status,
+      'Server Status': item.serverStatus || item.status,
+      'Notes': item.notes || '',
+      'Created At': item.createdAt ? new Date(item.createdAt).toLocaleString('en-GB') : 'N/A',
+      'Updated At': item.updatedAt ? new Date(item.updatedAt).toLocaleString('en-GB') : 'N/A'
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -235,7 +246,7 @@ export default function Inventory() {
 
     const wscols = [
       { wch: 20 }, { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
-      { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 40 }
+      { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 40 }, { wch: 22 }, { wch: 22 }
     ];
     worksheet['!cols'] = wscols;
 
@@ -244,10 +255,10 @@ export default function Inventory() {
 
   // Process and sort items
   // Process items and calculate dynamic status
-  const processedItems = useMemo(() => {
+  const processedItems = useMemo<InventoryRow[]>(() => {
     if (!data?.items) return [];
     
-    return data.items.map((item: any) => {
+    return data.items.map((item) => {
       const exp = new Date(item.expDate);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -263,6 +274,30 @@ export default function Inventory() {
     });
   }, [data?.items]);
 
+  const availableBranches = useMemo(() => {
+    const branchNames = new Set<string>();
+    branches.forEach((branch) => branchNames.add(branch.name));
+    processedItems.forEach((item) => branchNames.add(item.branch));
+    if (localBranchFilter !== 'All Branches') branchNames.add(localBranchFilter);
+    if (selectedBranch !== 'All Branches') branchNames.add(selectedBranch);
+    return ['All Branches', ...Array.from(branchNames).sort((a, b) => a.localeCompare(b))];
+  }, [branches, processedItems, localBranchFilter, selectedBranch]);
+
+  const availableUnits = useMemo(() => {
+    const unitNames = processedItems
+      .map((item) => item.unitName || item.unit)
+      .filter((unit): unit is string => Boolean(unit));
+    if (filterUnit !== 'All Units') unitNames.push(filterUnit);
+    return ['All Units', ...Array.from(new Set(unitNames)).sort((a, b) => a.localeCompare(b))];
+  }, [processedItems, filterUnit]);
+
+  const statusCounts = useMemo(() => {
+    return processedItems.reduce<Record<string, number>>((acc, item) => {
+      acc[item.status] = (acc[item.status] || 0) + 1;
+      return acc;
+    }, {});
+  }, [processedItems]);
+
   const sortedItems = useMemo(() => {
     if (!sortConfig) return processedItems;
 
@@ -271,6 +306,10 @@ export default function Inventory() {
         const aPriority = statusPriority[a.status] ?? 99;
         const bPriority = statusPriority[b.status] ?? 99;
         return sortConfig.direction === 'asc' ? aPriority - bPriority : bPriority - aPriority;
+      }
+
+      if (sortConfig.key === 'diffDays') {
+        return sortConfig.direction === 'asc' ? a.diffDays - b.diffDays : b.diffDays - a.diffDays;
       }
 
       const aValue = a[sortConfig.key];
@@ -282,13 +321,40 @@ export default function Inventory() {
     });
   }, [processedItems, sortConfig]);
 
+  const visibleItems = sortedItems;
+
+  const activeFilterChips = useMemo(() => {
+    const chips: string[] = [];
+    if (filterStatus !== 'All') chips.push(`Status: ${filterStatus}`);
+    if ((selectedBranch !== 'All Branches' ? selectedBranch : localBranchFilter) !== 'All Branches') {
+      chips.push(`Branch: ${selectedBranch !== 'All Branches' ? selectedBranch : localBranchFilter}`);
+    }
+    if (filterUnit !== 'All Units') chips.push(`Unit: ${filterUnit}`);
+    if (barcodeFilter === 'with-barcode') chips.push('Barcode only');
+    if (barcodeFilter === 'without-barcode') chips.push('Missing barcode');
+    if (notesFilter === 'with-notes') chips.push('With notes');
+    if (notesFilter === 'without-notes') chips.push('Without notes');
+    if (debouncedQuery) chips.push(`Search: ${debouncedQuery}`);
+    return chips;
+  }, [debouncedQuery, filterStatus, filterUnit, barcodeFilter, notesFilter, selectedBranch, localBranchFilter]);
+
+  const clearFilters = () => {
+    setFilterStatus('All');
+    if (selectedBranch === 'All Branches') {
+      setLocalBranchFilter('All Branches');
+    }
+    setFilterUnit('All Units');
+    setBarcodeFilter('all');
+    setNotesFilter('all');
+  };
+
   const bucketTabs = [
-    { label: 'All Items', value: 'All', count: data?.pagination?.totalCount },
-    { label: 'Expired', value: ExpiryStatus.Expired },
-    { label: 'Critical (0-15d)', value: ExpiryStatus.Critical },
-    { label: 'Warning (16-45d)', value: ExpiryStatus.Warning },
-    { label: 'Good (46-60d)', value: ExpiryStatus.Good },
-    { label: 'Safe (60+d)', value: ExpiryStatus.Safe },
+    { label: 'All Items', value: 'All', count: data?.summary?.all ?? data?.pagination?.totalCount ?? 0 },
+    { label: 'Expired', value: ExpiryStatus.Expired, count: data?.summary?.expired ?? statusCounts[ExpiryStatus.Expired] ?? 0 },
+    { label: 'Critical (0-15d)', value: ExpiryStatus.Critical, count: data?.summary?.critical ?? statusCounts[ExpiryStatus.Critical] ?? 0 },
+    { label: 'Warning (16-45d)', value: ExpiryStatus.Warning, count: data?.summary?.warning ?? statusCounts[ExpiryStatus.Warning] ?? 0 },
+    { label: 'Good (46-60d)', value: ExpiryStatus.Good, count: data?.summary?.good ?? statusCounts[ExpiryStatus.Good] ?? 0 },
+    { label: 'Safe (60+d)', value: ExpiryStatus.Safe, count: data?.summary?.safe ?? statusCounts[ExpiryStatus.Safe] ?? 0 },
   ];
 
   const pagination = data?.pagination;
@@ -321,8 +387,8 @@ export default function Inventory() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Inventory Management <span className="text-xs text-blue-500 font-mono">v2.0-PAGINATED</span></h1>
-          <p className="text-gray-500 mt-1">Track stock levels, expiry dates, and product details.</p>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Expired Goods <span className="text-xs text-blue-500 font-mono">server-backed inventory</span></h1>
+          <p className="text-gray-500 mt-1">Review expiry risk, apply server-backed filters, and inspect the full record details for each item.</p>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <button
@@ -346,38 +412,102 @@ export default function Inventory() {
 
       {/* Control Bar - Glassmorphism */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-4 hover:shadow-md transition-shadow">
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <div className="relative">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)]">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative">
+                <select
+                  className={`pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm appearance-none cursor-pointer ${selectedBranch !== 'All Branches' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-50 text-gray-700'}`}
+                  value={selectedBranch !== 'All Branches' ? selectedBranch : localBranchFilter}
+                  onChange={(e) => setLocalBranchFilter(e.target.value)}
+                  disabled={selectedBranch !== 'All Branches'}
+                >
+                  {availableBranches.map((branchName) => (
+                    <option key={branchName} value={branchName}>{branchName}</option>
+                  ))}
+                </select>
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+
               <select
-                className={`pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm appearance-none cursor-pointer ${selectedBranch !== 'All Branches' ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-50 text-gray-700'}`}
-                value={selectedBranch !== 'All Branches' ? selectedBranch : localBranchFilter}
-                onChange={(e) => setLocalBranchFilter(e.target.value)}
-                disabled={selectedBranch !== 'All Branches'}
+                className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                value={filterUnit}
+                onChange={(e) => setFilterUnit(e.target.value)}
               >
-                <option>All Branches</option>
-                {branches.map(b => <option key={b.id}>{b.name}</option>)}
+                {availableUnits.map((unitName) => (
+                  <option key={unitName} value={unitName}>{unitName}</option>
+                ))}
               </select>
-              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+
+              <select
+                className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                value={barcodeFilter}
+                onChange={(e) => setBarcodeFilter(e.target.value as 'all' | 'with-barcode' | 'without-barcode')}
+              >
+                <option value="all">All Barcode States</option>
+                <option value="with-barcode">With Barcode</option>
+                <option value="without-barcode">No Barcode</option>
+              </select>
+
+              <select
+                className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                value={notesFilter}
+                onChange={(e) => setNotesFilter(e.target.value as 'all' | 'with-notes' | 'without-notes')}
+              >
+                <option value="all">All Notes States</option>
+                <option value="with-notes">With Notes</option>
+                <option value="without-notes">No Notes</option>
+              </select>
+
+              <button
+                onClick={clearFilters}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Clear Filters
+              </button>
+
+              <button
+                onClick={() => refetch()}
+                disabled={isLoading}
+                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                title="Refresh"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
-            <button 
-              onClick={() => refetch()} 
-              disabled={isLoading}
-              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50" 
-              title="Refresh"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
+
+            {activeFilterChips.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {activeFilterChips.map((chip) => (
+                  <span
+                    key={chip}
+                    className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700"
+                  >
+                    {chip}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="hidden md:flex items-center text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
-            <Search className="w-3 h-3 mr-2" />
-            {pagination?.totalCount ?? 0} total items
-            {pagination && (
-              <span className="ml-2 text-blue-600">
-                Page {pagination.page} of {pagination.totalPages}
-              </span>
-            )}
+          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Filtered Total</div>
+              <div className="mt-1 text-xl font-bold text-gray-900">{pagination?.totalCount ?? 0}</div>
+              <div className="text-xs text-gray-500">Rows matching the active server filters</div>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Loaded Page</div>
+              <div className="mt-1 text-xl font-bold text-gray-900">{processedItems.length}</div>
+              <div className="text-xs text-gray-500">
+                {pagination ? `Page ${pagination.page} of ${pagination.totalPages}` : 'Current server page'}
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Rows Per Page</div>
+              <div className="mt-1 text-xl font-bold text-gray-900">{visibleItems.length}</div>
+              <div className="text-xs text-gray-500">Current page after sorting</div>
+            </div>
           </div>
         </div>
 
@@ -410,15 +540,15 @@ export default function Inventory() {
             <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
             <span className="ml-3">Loading inventory...</span>
           </div>
-        ) : sortedItems.length > 100 ? (
+        ) : visibleItems.length > 100 ? (
           // Virtual table for large datasets (>100 items)
           <InventoryVirtualTable
-            items={sortedItems}
+            items={visibleItems}
             onEdit={handleOpenModal}
             onDelete={setDeleteId}
             hasPermission={hasPermission}
             sortConfig={sortConfig as any}
-            onSort={(key) => handleSort(key as keyof ExpiredItem)}
+            onSort={(key) => handleSort(key as SortableInventoryKey)}
           />
         ) : (
           // Regular table for smaller datasets
@@ -434,33 +564,39 @@ export default function Inventory() {
                       ID / Barcode
                     </th>
                     <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('remainingQty')}>
-                      Stock
+                      Stock / Unit
                     </th>
-                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('expDate')}>
-                      Expiry
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('mfgDate')}>
+                      Mfg / Expiry
                     </th>
                     <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('branch')}>
                       Branch
                     </th>
-                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('status')}>
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('diffDays')}>
                       Status
+                    </th>
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('notes')}>
+                      Notes
+                    </th>
+                    <th className="px-6 py-4 font-semibold cursor-pointer group hover:bg-gray-100/50" onClick={() => handleSort('updatedAt')}>
+                      Server Data
                     </th>
                     <th className="px-6 py-4 font-semibold text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {sortedItems.length === 0 ? (
+                  {visibleItems.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
+                      <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
                         <div className="flex flex-col items-center justify-center">
                           <Package className="w-12 h-12 text-gray-200 mb-3" />
                           <p className="font-medium">No inventory found</p>
-                          <p className="text-xs mt-1">Try adjusting your filters or add a new item.</p>
+                          <p className="text-xs mt-1">No rows matched the current server-side filters. Adjust the filters or clear them.</p>
                         </div>
                       </td>
                     </tr>
                   ) : (
-                    sortedItems.map((item) => (
+                    visibleItems.map((item) => (
                       <tr key={item.id} className={`group hover:bg-blue-50/30 transition-colors ${item._optimistic ? 'opacity-70' : ''}`}>
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
@@ -485,23 +621,47 @@ export default function Inventory() {
                             </span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 font-medium text-gray-900">{item.remainingQty}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-gray-900">{item.remainingQty}</span>
+                            <span className="text-xs text-gray-500">{item.unitName}</span>
+                          </div>
+                        </td>
                         <td className="px-6 py-4">
                           <div className="flex flex-col text-xs space-y-1">
+                            <span className="font-medium text-gray-500">
+                              Mfg: {new Date(item.mfgDate).toLocaleDateString('en-GB')}
+                            </span>
                             <span className="font-bold text-gray-900">
                               {new Date(item.expDate).toLocaleDateString('en-GB')}
-                            </span>
-                            <span className={`font-black text-[10px] uppercase tracking-tighter ${item.status === ExpiryStatus.Expired ? 'text-red-600' : 'text-blue-500/70'}`}>
-                              {item.status}
                             </span>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-gray-500 text-xs">{item.branch}</td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ring-1 ring-inset ${getStatusColor(item.status)}`}>
-                            {item.diffDays < 0 ? `${Math.abs(item.diffDays)}d Overdue` : 
-                             item.diffDays === 0 ? 'Today' : `${item.diffDays}d Left`}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className={`inline-flex w-fit items-center px-2.5 py-1 rounded-full text-xs font-medium border ring-1 ring-inset ${getStatusColor(item.status)}`}>
+                              {item.diffDays < 0 ? `${Math.abs(item.diffDays)}d Overdue` : 
+                               item.diffDays === 0 ? 'Today' : `${item.diffDays}d Left`}
+                            </span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                              Live: {item.status}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {item.notes ? (
+                            <p className="max-w-xs whitespace-pre-wrap break-words text-xs text-gray-600">{item.notes}</p>
+                          ) : (
+                            <span className="text-xs italic text-gray-400">No notes</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1 text-[11px] text-gray-500">
+                            <span>Server status: <span className="font-semibold text-gray-700">{item.serverStatus || item.status}</span></span>
+                            <span>Created: {item.createdAt ? new Date(item.createdAt).toLocaleString('en-GB') : 'N/A'}</span>
+                            <span>Updated: {item.updatedAt ? new Date(item.updatedAt).toLocaleString('en-GB') : 'N/A'}</span>
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-right">
                           {hasPermission('Inventory', 'write') && (

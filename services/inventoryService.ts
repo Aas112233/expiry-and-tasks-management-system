@@ -7,6 +7,9 @@ export interface InventoryQueryParams {
     search?: string;
     status?: string;
     branch?: string;
+    unit?: string;
+    barcodeState?: 'all' | 'with-barcode' | 'without-barcode';
+    notesState?: 'all' | 'with-notes' | 'without-notes';
 }
 
 export interface PaginatedInventoryResponse {
@@ -18,6 +21,14 @@ export interface PaginatedInventoryResponse {
         totalPages: number;
         hasNextPage: boolean;
         hasPrevPage: boolean;
+    };
+    summary?: {
+        all: number;
+        expired: number;
+        critical: number;
+        warning: number;
+        good: number;
+        safe: number;
     };
 }
 
@@ -36,8 +47,11 @@ class InventoryService {
 
         return {
             ...item,
+            quantity: item.quantity,
+            unit: item.unit,
             remainingQty: item.quantity,
             unitName: item.unit,
+            serverStatus: item.status,
             status: liveStatus
         };
     }

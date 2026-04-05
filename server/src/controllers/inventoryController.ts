@@ -22,6 +22,70 @@ function calculateExpiryStatus(expDateStr: string | Date): string {
     return '60+';
 }
 
+type InventoryFilterArgs = {
+    user: any;
+    search?: string;
+    status?: string;
+    branch?: string;
+    unit?: string;
+    barcodeState?: string;
+    notesState?: string;
+};
+
+const EMPTY_VALUE_FILTERS = [{ equals: null }, { equals: '' }];
+
+function buildInventoryWhere({
+    user,
+    search,
+    status,
+    branch,
+    unit,
+    barcodeState,
+    notesState
+}: InventoryFilterArgs) {
+    const andFilters: any[] = [];
+
+    if (user?.role !== 'Admin' && user?.branch !== 'all') {
+        andFilters.push({ branch: user?.branch });
+    } else if (branch && branch !== 'all') {
+        andFilters.push({ branch });
+    }
+
+    if (search) {
+        andFilters.push({
+            OR: [
+                { productName: { contains: search, mode: 'insensitive' } },
+                { barcode: { contains: search, mode: 'insensitive' } },
+                { notes: { contains: search, mode: 'insensitive' } }
+            ]
+        });
+    }
+
+    if (unit && unit !== 'all') {
+        andFilters.push({ unit });
+    }
+
+    if (barcodeState === 'with-barcode') {
+        andFilters.push({ barcode: { not: null } });
+        andFilters.push({ barcode: { not: '' } });
+    } else if (barcodeState === 'without-barcode') {
+        andFilters.push({ OR: EMPTY_VALUE_FILTERS.map((filter) => ({ barcode: filter })) });
+    }
+
+    if (notesState === 'with-notes') {
+        andFilters.push({ notes: { not: null } });
+        andFilters.push({ notes: { not: '' } });
+    } else if (notesState === 'without-notes') {
+        andFilters.push({ OR: EMPTY_VALUE_FILTERS.map((filter) => ({ notes: filter })) });
+    }
+
+    if (status && status !== 'all') {
+        andFilters.push({ status });
+    }
+
+    return andFilters.length > 0 ? { AND: andFilters } : {};
+}
+
 /**
  * PAGINATED INVENTORY CONTROLLER
  * Real database interactions with automatic status computation and pagination.
@@ -30,7 +94,6 @@ function calculateExpiryStatus(expDateStr: string | Date): string {
 export const getAllItems = async (req: Request, res: Response): Promise<void> => {
     try {
         const user = (req as any).user;
-        const where: any = {};
 
         // Parse pagination params
         const page = parseInt(req.query.page as string) || 1;
@@ -41,32 +104,53 @@ export const getAllItems = async (req: Request, res: Response): Promise<void> =>
         const search = req.query.search as string;
         const status = req.query.status as string;
         const branchFilter = req.query.branch as string;
+        const unitFilter = req.query.unit as string;
+        const barcodeState = req.query.barcodeState as string;
+        const notesState = req.query.notesState as string;
 
-        // Non-admins can only see their own branch (unless they have global access 'all')
-        if (user?.role !== 'Admin' && user?.branch !== 'all') {
-            where.branch = user?.branch;
-        } else if (branchFilter && branchFilter !== 'all') {
-            where.branch = branchFilter;
-        }
+        const baseWhere = buildInventoryWhere({
+            user,
+            search,
+            branch: branchFilter,
+            unit: unitFilter,
+            barcodeState,
+            notesState
+        });
 
-        // Add search filter
-        if (search) {
-            where.OR = [
-                { productName: { contains: search, mode: 'insensitive' } },
-                { barcode: { contains: search, mode: 'insensitive' } },
-                { notes: { contains: search, mode: 'insensitive' } }
-            ];
-        }
-
-        // Add status filter
-        if (status && status !== 'all') {
-            where.status = status;
-        }
+        const where = buildInventoryWhere({
+            user,
+            search,
+            status,
+            branch: branchFilter,
+            unit: unitFilter,
+            barcodeState,
+            notesState
+        });
 
         // Get total count for pagination
-        const totalCount = await withTransactionRetry<number>(() =>
-            (prisma as any).inventoryItem.count({ where }) as Promise<number>
-        );
+        const [totalCount, allCount, expiredCount, criticalCount, warningCount, goodCount, safeCount] = await Promise.all([
+            withTransactionRetry<number>(() =>
+                (prisma as any).inventoryItem.count({ where }) as Promise<number>
+            ),
+            withTransactionRetry<number>(() =>
+                (prisma as any).inventoryItem.count({ where: baseWhere }) as Promise<number>
+            ),
+            withTransactionRetry<number>(() =>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: 'Expired' }) }) as Promise<number>
+            ),
+            withTransactionRetry<number>(() =>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: '0-15 days' }) }) as Promise<number>
+            ),
+            withTransactionRetry<number>(() =>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: '16-45 days' }) }) as Promise<number>
+            ),
+            withTransactionRetry<number>(() =>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: '46-60 days' }) }) as Promise<number>
+            ),
+            withTransactionRetry<number>(() =>
+                (prisma as any).inventoryItem.count({ where: buildInventoryWhere({ user, search, branch: branchFilter, unit: unitFilter, barcodeState, notesState, status: '60+' }) }) as Promise<number>
+            )
+        ]);
 
         const items = await withTransactionRetry(() =>
             (prisma as any).inventoryItem.findMany({
@@ -77,15 +161,25 @@ export const getAllItems = async (req: Request, res: Response): Promise<void> =>
             })
         );
 
+        const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+
         res.json({
             items,
             pagination: {
                 page,
                 limit,
                 totalCount,
-                totalPages: Math.ceil(totalCount / limit),
+                totalPages,
                 hasNextPage: page * limit < totalCount,
                 hasPrevPage: page > 1
+            },
+            summary: {
+                all: allCount,
+                expired: expiredCount,
+                critical: criticalCount,
+                warning: warningCount,
+                good: goodCount,
+                safe: safeCount
             }
         });
     } catch (error) {

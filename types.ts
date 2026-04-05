@@ -87,13 +87,18 @@ export interface ExpiredItem {
   id: string;
   productName: string;
   unitName: string;
-  barcode: string;
+  unit?: string;
+  barcode?: string;
   remainingQty: number;
+  quantity?: number;
   mfgDate: string;
   expDate: string;
   branch: string;
   status: ExpiryStatus; // Computed by backend or frontend based on dates
   notes?: string;
+  serverStatus?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // API Endpoint: /api/branches
