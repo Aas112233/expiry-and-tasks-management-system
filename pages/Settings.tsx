@@ -1,18 +1,19 @@
-
 import React, { useState, useRef } from 'react';
-import { User, Bell, Shield, Globe, Save, Lock, Mail, Smartphone, Database, Upload, FileJson, AlertCircle, CheckCircle, RefreshCw, Loader2, Download } from 'lucide-react';
+import { User, Bell, Shield, Globe, Database, Upload, FileJson, Download, Loader2 } from 'lucide-react';
 import { apiFetch } from '../services/apiConfig';
 import { useAuth } from '../AuthContext';
 import { useBranch } from '../BranchContext';
 import { useToast } from '../ToastContext';
+import { Button, Card, Badge, Input, Select } from '../components/ui';
+import { PageHeader } from '../components/layout/PageHeader';
 
 const SettingsSection = ({ title, icon: Icon, children, isActive, onClick }: any) => (
     <button
         onClick={onClick}
-        className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-all duration-200 ${isActive ? 'bg-blue-50 text-blue-700 shadow-sm' : 'text-gray-600 hover:bg-gray-50'
+        className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-all duration-200 ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'
             }`}
     >
-        <div className={`p-1.5 rounded-lg ${isActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+        <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
             <Icon className="w-4 h-4" />
         </div>
         <span className="font-medium text-sm">{title}</span>
@@ -38,7 +39,7 @@ export default function Settings() {
 
     const handleDownloadBackup = async () => {
         if (user?.role !== 'Admin') {
-            showToast('Only admin users can download backups', 'error');
+            showToast({ title: 'Access Denied', message: 'Only admin users can download backups', type: 'error' });
             return;
         }
 
@@ -71,7 +72,6 @@ export default function Settings() {
             const a = document.createElement('a');
             a.href = url;
 
-            // Extract filename from Content-Disposition header or use default
             const contentDisposition = response.headers.get('Content-Disposition');
             let filename = `etms-backup-${new Date().toISOString().split('T')[0]}.json`;
             if (contentDisposition) {
@@ -87,10 +87,10 @@ export default function Settings() {
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
 
-            showToast('Backup downloaded successfully!', 'success');
+            showToast({ title: 'Success', message: 'Backup downloaded successfully', type: 'success' });
         } catch (error: any) {
             console.error('Backup download error:', error);
-            showToast(error.message || 'Failed to download backup', 'error');
+            showToast({ title: 'Error', message: error.message || 'Failed to download backup', type: 'error' });
         } finally {
             setDownloadLoading(false);
         }
@@ -123,7 +123,6 @@ export default function Settings() {
                 const result = await apiFetch<{
                     imported: number;
                     skipped: number;
-                    skipReasons?: string[];
                 }>('/backup/restore-batch', {
                     method: 'POST',
                     headers: {
@@ -134,11 +133,6 @@ export default function Settings() {
                         overrideBranch: restoreMode === 'specific' ? targetBranch : undefined
                     })
                 });
-                console.log(`[Frontend] Batch ${Math.floor(i / BATCH_SIZE) + 1} Result:`, result);
-
-                if (result.skipReasons && result.skipReasons.length > 0) {
-                    console.log(`[Frontend] Skip Reasons for Batch ${Math.floor(i / BATCH_SIZE) + 1}:`, result.skipReasons);
-                }
 
                 importedTotal += result.imported;
                 skippedTotal += result.skipped;
@@ -151,16 +145,19 @@ export default function Settings() {
 
             } catch (error) {
                 console.error('Batch error:', error);
-                // Continue with next batch
             }
         }
 
         setRestoreProgress(100);
         setRestoreStatus('Restoration complete!');
         if (skippedTotal > 0) {
-            showToast(`Restored ${importedTotal} items. ${skippedTotal} skipped (Check Console for reasons).`, 'success');
+            showToast({
+                title: 'Restore Complete',
+                message: `Restored ${importedTotal} items. ${skippedTotal} skipped.`,
+                type: 'success'
+            });
         } else {
-            showToast(`Successfully restored ${importedTotal} items.`, 'success');
+            showToast({ title: 'Success', message: `Successfully restored ${importedTotal} items`, type: 'success' });
         }
         setRestoreLoading(false);
         setRestoreFile(null);
@@ -190,325 +187,311 @@ export default function Settings() {
 
                 await handleRestoreItems(data.products);
             } catch (error: any) {
-                showToast(error.message || 'Restoration failed', 'error');
+                showToast({ title: 'Error', message: error.message || 'Restoration failed', type: 'error' });
                 setRestoreLoading(false);
                 setRestoreStatus('Error: ' + error.message);
             }
         };
 
         reader.onerror = () => {
-            showToast('Failed to read file', 'error');
+            showToast({ title: 'Error', message: 'Failed to read file', type: 'error' });
             setRestoreLoading(false);
         };
 
         reader.readAsText(restoreFile);
     };
 
-    return (
-        <div className="max-w-6xl mx-auto px-4 py-8">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">System Settings</h1>
-                    <p className="text-gray-500 mt-1 font-medium">Configure preferences and manage system health.</p>
-                </div>
-            </div>
+    const tabs = [
+        { id: 'general', title: 'General', icon: Globe },
+        { id: 'profile', title: 'Profile Info', icon: User },
+        { id: 'notifications', title: 'Notifications', icon: Bell },
+        { id: 'security', title: 'Security', icon: Shield },
+        { id: 'backup', title: 'Backup & Restore', icon: Database }
+    ];
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+    return (
+        <div className="space-y-6">
+            <PageHeader
+                title="System Settings"
+                description="Configure preferences and manage system health."
+            />
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 {/* Navigation Sidebar */}
-                <div className="lg:col-span-3 space-y-4">
-                    <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-sm border border-gray-100 p-3 space-y-1">
-                        <SettingsSection
-                            title="General"
-                            icon={Globe}
-                            isActive={activeTab === 'general'}
-                            onClick={() => setActiveTab('general')}
-                        />
-                        <SettingsSection
-                            title="Profile Info"
-                            icon={User}
-                            isActive={activeTab === 'profile'}
-                            onClick={() => setActiveTab('profile')}
-                        />
-                        <SettingsSection
-                            title="Notifications"
-                            icon={Bell}
-                            isActive={activeTab === 'notifications'}
-                            onClick={() => setActiveTab('notifications')}
-                        />
-                        <SettingsSection
-                            title="Security"
-                            icon={Shield}
-                            isActive={activeTab === 'security'}
-                            onClick={() => setActiveTab('security')}
-                        />
-                        <SettingsSection
-                            title="Backup & Restore"
-                            icon={Database}
-                            isActive={activeTab === 'backup'}
-                            onClick={() => setActiveTab('backup')}
-                        />
-                    </div>
+                <div className="lg:col-span-3">
+                    <Card padding="sm">
+                        <nav className="space-y-1">
+                            {tabs.map(tab => (
+                                <SettingsSection
+                                    key={tab.id}
+                                    title={tab.title}
+                                    icon={tab.icon}
+                                    isActive={activeTab === tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                />
+                            ))}
+                        </nav>
+                    </Card>
                 </div>
 
                 {/* Content Area */}
                 <div className="lg:col-span-9">
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 min-h-[500px] flex flex-col">
-                        <div className="p-6 md:p-8 flex-1">
-                            {activeTab === 'general' && (
-                                <div className="animate-fade-in space-y-8">
-                                    <div className="flex items-center gap-4 border-b border-gray-100 pb-6">
-                                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                                            <Globe className="w-6 h-6" />
-                                        </div>
-                                        <div>
-                                            <h2 className="text-xl font-bold text-gray-900">General Settings</h2>
-                                            <p className="text-sm text-gray-500">Global system configuration and localization.</p>
-                                        </div>
+                    <Card className="min-h-[500px]">
+                        {activeTab === 'general' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-4 pb-6 border-b border-gray-100">
+                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                                        <Globe className="w-6 h-6" />
                                     </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-900">General Settings</h2>
+                                        <p className="text-sm text-gray-500">Global system configuration and localization.</p>
+                                    </div>
+                                </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-semibold text-gray-700">System Display Name</label>
-                                            <input type="text" defaultValue="Expiry & Tasks Management" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none" />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <Input
+                                        label="System Display Name"
+                                        defaultValue="Expiry & Tasks Management"
+                                    />
+                                    <Input
+                                        label="Organization Unit"
+                                        defaultValue="Main Warehouse"
+                                    />
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">System Timezone</label>
+                                        <select className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white">
+                                            <option>UTC+03:00 (Nairobi)</option>
+                                            <option>UTC+00:00 (GMT)</option>
+                                            <option>UTC-05:00 (EST)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Default Currency</label>
+                                        <select className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white">
+                                            <option>USD ($)</option>
+                                            <option>KES (KSh)</option>
+                                            <option>EUR (€)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-4">
+                                    <Button variant="primary" leftIcon={<Save />}>
+                                        Save Changes
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'backup' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-4 pb-6 border-b border-gray-100">
+                                    <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                                        <Database className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-900">Backup & Restore</h2>
+                                        <p className="text-sm text-gray-500">Manage data persistence and disaster recovery.</p>
+                                    </div>
+                                </div>
+
+                                {/* Download Backup */}
+                                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-6">
+                                    <div className="flex items-start gap-4">
+                                        <div className="p-3 bg-white rounded-xl shadow-sm border border-blue-100">
+                                            <Download className="w-6 h-6 text-blue-600" />
                                         </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-semibold text-gray-700">Organization Unit</label>
-                                            <input type="text" defaultValue="Main Warehouse" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-semibold text-gray-700">System Timezone</label>
-                                            <select className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500">
-                                                <option>UTC+03:00 (Nairobi)</option>
-                                                <option>UTC+00:00 (GMT)</option>
-                                                <option>UTC-05:00 (EST)</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-semibold text-gray-700">Default Currency</label>
-                                            <select className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500">
-                                                <option>USD ($)</option>
-                                                <option>KES (KSh)</option>
-                                                <option>EUR (€)</option>
-                                            </select>
+                                        <div className="flex-1">
+                                            <h3 className="text-base font-bold text-gray-900">Download Backup</h3>
+                                            <p className="text-sm text-gray-600 mt-1">
+                                                Export all inventory data as a JSON file for backup purposes.
+                                            </p>
+
+                                            {user?.role === 'Admin' ? (
+                                                <Button
+                                                    variant="primary"
+                                                    className="mt-4"
+                                                    leftIcon={<Download />}
+                                                    onClick={handleDownloadBackup}
+                                                    disabled={downloadLoading}
+                                                >
+                                                    {downloadLoading ? 'Preparing...' : 'Download JSON Backup'}
+                                                </Button>
+                                            ) : (
+                                                <div className="mt-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                                                    <p className="text-xs text-amber-700 font-medium">
+                                                        🔒 Only admin users can download backups
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
-                            )}
 
-                            {activeTab === 'backup' && (
-                                <div className="animate-fade-in space-y-8">
-                                    <div className="flex items-center gap-4 border-b border-gray-100 pb-6">
-                                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
-                                            <Database className="w-6 h-6" />
-                                        </div>
-                                        <div>
-                                            <h2 className="text-xl font-bold text-gray-900">Backup & Restore</h2>
-                                            <p className="text-sm text-gray-500">Manage data persistence and disaster recovery.</p>
-                                        </div>
+                                {/* Restore Backup */}
+                                <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center">
+                                    <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                        <FileJson className="w-8 h-8 text-indigo-500" />
                                     </div>
+                                    <h3 className="text-lg font-bold text-gray-900">Restore from JSON</h3>
+                                    <p className="text-sm text-gray-500 mt-1 mb-6 max-w-sm">
+                                        Upload your system backup file to merge products into the database.
+                                    </p>
 
-                                    {/* Download Backup Section */}
-                                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-6">
-                                        <div className="flex items-start gap-4">
-                                            <div className="p-3 bg-white rounded-xl shadow-sm border border-blue-100 flex items-center justify-center">
-                                                <Download className="w-6 h-6 text-blue-600" />
+                                    <div className="max-w-md mx-auto space-y-4">
+                                        {/* Branch Selection */}
+                                        <div className="bg-white p-4 rounded-xl border border-gray-200 text-left">
+                                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Import Location</span>
+                                            <div className="flex gap-2 mt-3">
+                                                <button
+                                                    onClick={() => setRestoreMode('original')}
+                                                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold border transition-all ${restoreMode === 'original'
+                                                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                                            : 'bg-gray-50 border-gray-100 text-gray-500'
+                                                        }`}
+                                                >
+                                                    Original Branches
+                                                </button>
+                                                <button
+                                                    onClick={() => setRestoreMode('specific')}
+                                                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold border transition-all ${restoreMode === 'specific'
+                                                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                                            : 'bg-gray-50 border-gray-100 text-gray-500'
+                                                        }`}
+                                                >
+                                                    Specific Branch
+                                                </button>
                                             </div>
-                                            <div className="flex-1 text-left">
-                                                <h3 className="text-base font-bold text-gray-900">Download Backup</h3>
-                                                <p className="text-sm text-gray-600 mt-1">Export all inventory data as a JSON file. This backup can be used to restore your system later.</p>
 
-                                                {user?.role === 'Admin' ? (
-                                                    <button
-                                                        onClick={handleDownloadBackup}
-                                                        disabled={downloadLoading}
-                                                        className="mt-4 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
+                                            {restoreMode === 'specific' && (
+                                                <div className="mt-3">
+                                                    <select
+                                                        value={targetBranch}
+                                                        onChange={(e) => setTargetBranch(e.target.value)}
+                                                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                                                     >
-                                                        {downloadLoading ? (
-                                                            <>
-                                                                <Loader2 className="w-4 h-4 animate-spin" />
-                                                                Preparing Download...
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <Download className="w-4 h-4" />
-                                                                Download JSON Backup
-                                                            </>
-                                                        )}
-                                                    </button>
-                                                ) : (
-                                                    <div className="mt-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                                                        <p className="text-xs text-amber-700 font-medium">
-                                                            🔒 Only admin users can download backups
+                                                        <option value="">-- Choose Target Branch --</option>
+                                                        {branches.map(b => (
+                                                            <option key={b.id} value={b.name}>{b.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* File Upload */}
+                                        <div className="relative">
+                                            <input
+                                                type="file"
+                                                ref={fileInputRef}
+                                                accept=".json"
+                                                onChange={handleFileChange}
+                                                disabled={restoreLoading || !hasPermission('Settings', 'write')}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                                            />
+                                            <div className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl flex items-center justify-between">
+                                                <span className="text-sm text-gray-500 truncate mr-2">
+                                                    {restoreFile ? restoreFile.name : 'Select .json backup file...'}
+                                                </span>
+                                                <Upload className="w-4 h-4 text-gray-400" />
+                                            </div>
+                                        </div>
+
+                                        {/* Progress */}
+                                        {restoreLoading && (
+                                            <div className="space-y-3 pt-4">
+                                                <div className="flex justify-between items-end">
+                                                    <div className="text-left">
+                                                        <p className="text-xs font-bold text-indigo-600 uppercase">{restoreStatus}</p>
+                                                        <p className="text-sm font-medium text-gray-600">
+                                                            Items: {restoreStats.imported + restoreStats.skipped} / {restoreStats.total}
                                                         </p>
                                                     </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-200 p-8 flex flex-col items-center text-center">
-                                        <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center mb-4">
-                                            <FileJson className="w-8 h-8 text-indigo-500" />
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-900">Restore from JSON</h3>
-                                        <p className="text-sm text-gray-500 mt-1 mb-6 max-w-sm">Upload your system backup file to merge products. You can choose to keep original branches or redirect all items to a new location.</p>
-
-                                        <div className="w-full max-w-md space-y-4">
-                                            {/* Branch Selection Mode */}
-                                            <div className="bg-white p-4 rounded-xl border border-gray-200 text-left space-y-4 shadow-sm">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Import Location</span>
+                                                    <span className="text-2xl font-black text-indigo-600">{restoreProgress}%</span>
                                                 </div>
-
-                                                <div className="flex gap-4">
-                                                    <button
-                                                        onClick={() => setRestoreMode('original')}
-                                                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold border transition-all ${restoreMode === 'original' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-gray-50 border-gray-100 text-gray-500'}`}
-                                                    >
-                                                        Original Branches
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setRestoreMode('specific')}
-                                                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold border transition-all ${restoreMode === 'specific' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-gray-50 border-gray-100 text-gray-500'}`}
-                                                    >
-                                                        Specific Branch
-                                                    </button>
-                                                </div>
-
-                                                {restoreMode === 'specific' && (
-                                                    <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                                                        <select
-                                                            value={targetBranch}
-                                                            onChange={(e) => setTargetBranch(e.target.value)}
-                                                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                        >
-                                                            <option value="">-- Choose Target Branch --</option>
-                                                            {branches.map(b => (
-                                                                <option key={b.id} value={b.name}>{b.name}</option>
-                                                            ))}
-                                                        </select>
-                                                        {targetBranch === '' && (
-                                                            <p className="text-[10px] text-amber-600 mt-1 font-medium italic">* If blank, the original branch from backup will be used.</p>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="relative">
-                                                <input
-                                                    type="file"
-                                                    ref={fileInputRef}
-                                                    accept=".json"
-                                                    onChange={handleFileChange}
-                                                    disabled={restoreLoading || !hasPermission('Settings', 'write')}
-                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                                                />
-                                                <div className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl flex items-center justify-between">
-                                                    <span className="text-sm text-gray-500 truncate mr-2">
-                                                        {restoreFile ? restoreFile.name : 'Select .json backup file...'}
-                                                    </span>
-                                                    <Upload className="w-4 h-4 text-gray-400" />
+                                                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 transition-all duration-300"
+                                                        style={{ width: `${restoreProgress}%` }}
+                                                    />
                                                 </div>
                                             </div>
+                                        )}
 
-                                            {restoreLoading && (
-                                                <div className="space-y-3 pt-4">
-                                                    <div className="flex justify-between items-end">
-                                                        <div className="text-left">
-                                                            <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider">{restoreStatus}</p>
-                                                            <p className="text-sm font-medium text-gray-600">
-                                                                Items: {restoreStats.imported + restoreStats.skipped} / {restoreStats.total}
-                                                            </p>
-                                                        </div>
-                                                        <span className="text-2xl font-black text-indigo-600">{restoreProgress}%</span>
-                                                    </div>
-                                                    <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-indigo-500 transition-all duration-300 ease-out"
-                                                            style={{ width: `${restoreProgress}%` }}
-                                                        />
-                                                    </div>
-                                                    <div className="flex gap-4 text-xs font-medium text-gray-500">
-                                                        <div className="flex items-center gap-1">
-                                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                                            {restoreStats.imported} Imported
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
-                                                            {restoreStats.skipped} Skipped (Duplicates)
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {!restoreLoading && (
-                                                <button
-                                                    onClick={handleRestore}
-                                                    disabled={!restoreFile || !hasPermission('Settings', 'write')}
-                                                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center"
-                                                >
-                                                    <Upload className="w-4 h-4 mr-2" />
-                                                    Start Restoration
-                                                </button>
-                                            )}
-                                        </div>
+                                        {/* Action Button */}
+                                        <Button
+                                            variant="primary"
+                                            className="w-full"
+                                            leftIcon={<Upload />}
+                                            onClick={handleRestore}
+                                            disabled={!restoreFile || restoreLoading}
+                                        >
+                                            {restoreLoading ? 'Restoring...' : 'Restore Backup'}
+                                        </Button>
                                     </div>
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            {activeTab === 'profile' && (
-                                <div className="animate-fade-in space-y-8">
-                                    <div className="flex items-center gap-4 border-b border-gray-100 pb-6">
-                                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-                                            <User className="w-6 h-6" />
-                                        </div>
-                                        <div>
-                                            <h2 className="text-xl font-bold text-gray-900">Profile Information</h2>
-                                            <p className="text-sm text-gray-500">Manage your account details and profile picture.</p>
-                                        </div>
+                        {activeTab === 'profile' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-4 pb-6 border-b border-gray-100">
+                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                                        <User className="w-6 h-6" />
                                     </div>
-
-                                    <div className="flex flex-col items-center sm:flex-row gap-8">
-                                        <div className="relative group">
-                                            <img src="https://picsum.photos/300" alt="Avatar" className="w-32 h-32 rounded-3xl object-cover ring-4 ring-emerald-50 shadow-xl" />
-                                            <div className="absolute inset-0 bg-black/40 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                                                <Upload className="w-6 h-6 text-white" />
-                                            </div>
-                                        </div>
-                                        <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-semibold text-gray-700">Full Name</label>
-                                                <input type="text" defaultValue="Liam Parker" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-semibold text-gray-700">Email Address</label>
-                                                <input type="email" defaultValue="admin@company.com" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-semibold text-gray-700">Phone Number</label>
-                                                <input type="text" defaultValue="+254 712 345 678" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-semibold text-gray-700">Role</label>
-                                                <input type="text" defaultValue="System Administrator" readOnly className="w-full px-4 py-2.5 bg-gray-100 border border-gray-200 rounded-xl outline-none cursor-not-allowed text-gray-500" />
-                                            </div>
-                                        </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-900">Profile Information</h2>
+                                        <p className="text-sm text-gray-500">Manage your personal details.</p>
                                     </div>
                                 </div>
-                            )}
-                        </div>
+                                <div className="text-center py-12">
+                                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 mx-auto flex items-center justify-center text-white text-3xl font-bold">
+                                        {user?.name?.charAt(0) || 'U'}
+                                    </div>
+                                    <h3 className="text-xl font-bold text-gray-900 mt-4">{user?.name || 'User'}</h3>
+                                    <p className="text-gray-500">{user?.email || 'user@example.com'}</p>
+                                    <Badge variant="info" className="mt-2">{user?.role || 'User'}</Badge>
+                                </div>
+                            </div>
+                        )}
 
-                        <div className="p-6 bg-gray-50/50 border-t border-gray-100 flex justify-between items-center rounded-b-2xl">
-                            <p className="text-sm text-gray-500 font-medium">Last saved: {new Date().toLocaleTimeString()}</p>
-                            <button
-                                disabled={!hasPermission('Settings', 'write')}
-                                className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-md shadow-blue-200 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                            >
-                                <Save className="w-4 h-4 mr-2" />
-                                Save Preferences
-                            </button>
-                        </div>
-                    </div>
+                        {activeTab === 'notifications' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-4 pb-6 border-b border-gray-100">
+                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                                        <Bell className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-900">Notifications</h2>
+                                        <p className="text-sm text-gray-500">Configure alert preferences.</p>
+                                    </div>
+                                </div>
+                                <div className="text-center py-12 text-gray-500">
+                                    <Bell className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                                    <p className="font-medium">Notification settings coming soon</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'security' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-4 pb-6 border-b border-gray-100">
+                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                                        <Shield className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-900">Security</h2>
+                                        <p className="text-sm text-gray-500">Manage passwords and access.</p>
+                                    </div>
+                                </div>
+                                <div className="text-center py-12 text-gray-500">
+                                    <Shield className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                                    <p className="font-medium">Security settings coming soon</p>
+                                </div>
+                            </div>
+                        )}
+                    </Card>
                 </div>
             </div>
         </div>

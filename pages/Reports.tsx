@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Download, Filter, Calendar, CheckSquare, AlertTriangle, Layers, Loader2 } from 'lucide-react';
+import { FileText, Download, Calendar, CheckSquare, AlertTriangle, Layers, Loader2 } from 'lucide-react';
 import { useBranch } from '../BranchContext';
 import { inventoryService } from '../services/inventoryService';
 import { taskService } from '../services/taskService';
 import { ExpiredItem, Task } from '../types';
+import { Button, Card, Badge, EmptyState, Skeleton } from '../components/ui';
+import { PageHeader } from '../components/layout/PageHeader';
 
 type ReportType = 'expiry' | 'tasks' | 'inventory';
 
@@ -26,7 +28,7 @@ export default function Reports() {
         setIsLoading(true);
         try {
             const [fetchedInventory, fetchedTasks] = await Promise.all([
-                inventoryService.getAllItems({ limit: 1000000 }), // high limit for full reports export
+                inventoryService.getAllItems({ limit: 1000000 }),
                 taskService.getAllTasks({ limit: 1000000 })
             ]);
             setItems(fetchedInventory.items || []);
@@ -66,7 +68,6 @@ export default function Reports() {
                 Status: t.status
             }));
         } else {
-            // Inventory Report
             let data = items;
             if (selectedBranch !== 'All') {
                 data = data.filter(item => item.branch === selectedBranch);
@@ -91,7 +92,6 @@ export default function Reports() {
             return;
         }
 
-        // Convert JSON to CSV
         const headers = Object.keys(data[0]);
         const csvRows = [];
         csvRows.push(headers.join(','));
@@ -117,75 +117,96 @@ export default function Reports() {
         document.body.removeChild(a);
     };
 
+    const reportCards = [
+        {
+            id: 'expiry' as ReportType,
+            title: 'Expiry Risk Report',
+            description: 'Detailed list of expired and expiring items by branch.',
+            icon: AlertTriangle,
+            iconColor: selectedReport === 'expiry' ? 'text-white' : 'text-red-600',
+            bgColor: selectedReport === 'expiry' ? 'bg-indigo-600' : 'bg-red-50'
+        },
+        {
+            id: 'tasks' as ReportType,
+            title: 'Task Performance',
+            description: 'Task completion rates and employee workload analysis.',
+            icon: CheckSquare,
+            iconColor: selectedReport === 'tasks' ? 'text-white' : 'text-emerald-600',
+            bgColor: selectedReport === 'tasks' ? 'bg-indigo-600' : 'bg-emerald-50'
+        },
+        {
+            id: 'inventory' as ReportType,
+            title: 'Inventory Status',
+            description: 'Current stock levels and distribution summary.',
+            icon: Layers,
+            iconColor: selectedReport === 'inventory' ? 'text-white' : 'text-purple-600',
+            bgColor: selectedReport === 'inventory' ? 'bg-indigo-600' : 'bg-purple-50'
+        }
+    ];
+
     if (isLoading) {
         return (
-            <div className="flex h-96 items-center justify-center text-gray-400">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                <span className="ml-3 font-medium">Preparing report data...</span>
+            <div className="space-y-6">
+                <Skeleton className="w-48 h-8" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {[1, 2, 3].map(i => (
+                        <Card key={i}>
+                            <Skeleton variant="circle" className="w-12 h-12 mb-4" />
+                            <Skeleton variant="line" className="w-3/4 h-6 mb-2" />
+                            <Skeleton variant="line" className="w-full h-4" />
+                        </Card>
+                    ))}
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Reports Center</h1>
-                    <p className="text-sm text-gray-500 mt-1 font-medium">Generate and download detailed reports from production data.</p>
-                </div>
-                <button onClick={loadData} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all shadow-sm bg-white border border-gray-100">
-                    <Calendar className="w-5 h-5" />
-                </button>
-            </div>
+        <div className="space-y-6">
+            <PageHeader
+                title="Reports Center"
+                description="Generate and download detailed reports from production data."
+                actions={
+                    <Button variant="secondary" leftIcon={<Calendar />} onClick={loadData}>
+                        Refresh Data
+                    </Button>
+                }
+            />
 
-            {/* Report Types Cards */}
+            {/* Report Type Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div
-                    onClick={() => setSelectedReport('expiry')}
-                    className={`p-6 rounded-2xl border cursor-pointer transition-all duration-300 ${selectedReport === 'expiry' ? 'bg-indigo-50 border-indigo-200 shadow-lg shadow-indigo-100 ring-2 ring-indigo-500/20' : 'bg-white border-gray-100 hover:shadow-md hover:-translate-y-1'}`}
-                >
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-colors ${selectedReport === 'expiry' ? 'bg-indigo-600 text-white' : 'bg-red-50 text-red-600'}`}>
-                        <AlertTriangle className="w-6 h-6" />
+                {reportCards.map(card => (
+                    <div
+                        key={card.id}
+                        onClick={() => setSelectedReport(card.id)}
+                        className={`p-6 rounded-2xl border cursor-pointer transition-all duration-300 ${selectedReport === card.id
+                                ? 'bg-indigo-50 border-indigo-200 shadow-lg ring-2 ring-indigo-500/20'
+                                : 'bg-white border-gray-100 hover:shadow-md hover:-translate-y-1'
+                            }`}
+                    >
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-colors ${card.bgColor}`}>
+                            <card.icon className={`w-6 h-6 ${card.iconColor}`} />
+                        </div>
+                        <h3 className="font-bold text-gray-900 text-lg">{card.title}</h3>
+                        <p className="text-sm text-gray-500 mt-2">{card.description}</p>
                     </div>
-                    <h3 className="font-bold text-gray-900 text-lg">Expiry Risk Report</h3>
-                    <p className="text-sm text-gray-500 mt-2 leading-relaxed">Detailed list of expired and expiring items by branch. Perfect for disposal audits.</p>
-                </div>
-
-                <div
-                    onClick={() => setSelectedReport('tasks')}
-                    className={`p-6 rounded-2xl border cursor-pointer transition-all duration-300 ${selectedReport === 'tasks' ? 'bg-indigo-50 border-indigo-200 shadow-lg shadow-indigo-100 ring-2 ring-indigo-500/20' : 'bg-white border-gray-100 hover:shadow-md hover:-translate-y-1'}`}
-                >
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-colors ${selectedReport === 'tasks' ? 'bg-indigo-600 text-white' : 'bg-emerald-50 text-emerald-600'}`}>
-                        <CheckSquare className="w-6 h-6" />
-                    </div>
-                    <h3 className="font-bold text-gray-900 text-lg">Task Performance</h3>
-                    <p className="text-sm text-gray-500 mt-2 leading-relaxed">Task completion rates, overdue items, and employee workload analysis.</p>
-                </div>
-
-                <div
-                    onClick={() => setSelectedReport('inventory')}
-                    className={`p-6 rounded-2xl border cursor-pointer transition-all duration-300 ${selectedReport === 'inventory' ? 'bg-indigo-50 border-indigo-200 shadow-lg shadow-indigo-100 ring-2 ring-indigo-500/20' : 'bg-white border-gray-100 hover:shadow-md hover:-translate-y-1'}`}
-                >
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-colors ${selectedReport === 'inventory' ? 'bg-indigo-600 text-white' : 'bg-purple-50 text-purple-600'}`}>
-                        <Layers className="w-6 h-6" />
-                    </div>
-                    <h3 className="font-bold text-gray-900 text-lg">Inventory Status</h3>
-                    <p className="text-sm text-gray-500 mt-2 leading-relaxed">Current stock levels, categorization, and distribution summary across branches.</p>
-                </div>
+                ))}
             </div>
 
             <div className="flex flex-col lg:flex-row gap-6">
                 {/* Configuration Panel */}
-                <div className="w-full lg:w-1/3 xl:w-1/4 space-y-6">
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 sticky top-6">
-                        <h3 className="font-bold text-gray-900 mb-6 flex items-center uppercase text-xs tracking-widest text-gray-400">
+                <div className="w-full lg:w-1/3 xl:w-1/4">
+                    <Card className="sticky top-6">
+                        <h3 className="font-bold text-gray-900 mb-6 uppercase text-xs tracking-widest text-gray-400">
                             Report Configuration
                         </h3>
                         <div className="space-y-5">
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Target Branch</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                    Target Branch
+                                </label>
                                 <select
-                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-gray-50/50 text-sm font-medium"
+                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-gray-50/50 text-sm font-medium"
                                     value={selectedBranch}
                                     onChange={e => setSelectedBranch(e.target.value)}
                                 >
@@ -193,30 +214,47 @@ export default function Reports() {
                                     {branches.map(b => <option key={b.id}>{b.name}</option>)}
                                 </select>
                             </div>
+
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Duration (Optional)</label>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                    Duration (Optional)
+                                </label>
                                 <div className="grid grid-cols-1 gap-3">
-                                    <input type="date" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium bg-gray-50/50 focus:ring-2 focus:ring-indigo-500/20" value={startDate} title="Start Date" onChange={e => setStartDate(e.target.value)} />
-                                    <input type="date" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium bg-gray-50/50 focus:ring-2 focus:ring-indigo-500/20" value={endDate} title="End Date" onChange={e => setEndDate(e.target.value)} />
+                                    <input
+                                        type="date"
+                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium bg-gray-50/50 focus:ring-2 focus:ring-indigo-500/20"
+                                        value={startDate}
+                                        onChange={e => setStartDate(e.target.value)}
+                                    />
+                                    <input
+                                        type="date"
+                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium bg-gray-50/50 focus:ring-2 focus:ring-indigo-500/20"
+                                        value={endDate}
+                                        onChange={e => setEndDate(e.target.value)}
+                                    />
                                 </div>
                             </div>
+
                             <div className="pt-4">
-                                <button
+                                <Button
+                                    variant="primary"
+                                    className="w-full"
+                                    leftIcon={<Download />}
                                     onClick={handleDownload}
-                                    className="w-full h-12 flex items-center justify-center px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 font-bold text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
                                 >
-                                    <Download className="w-4 h-4 mr-2" />
-                                    EXPORT CSV DATA
-                                </button>
-                                <p className="text-[10px] text-gray-400 text-center mt-3 font-medium uppercase tracking-tight">CSV format compatible with Excel & Sheets</p>
+                                    Export CSV Data
+                                </Button>
+                                <p className="text-[10px] text-gray-400 text-center mt-3 font-medium uppercase tracking-tight">
+                                    CSV format compatible with Excel & Sheets
+                                </p>
                             </div>
                         </div>
-                    </div>
+                    </Card>
                 </div>
 
                 {/* Preview Panel */}
                 <div className="flex-1">
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full min-h-[500px]">
+                    <Card padding="none" className="min-h-[500px]">
                         <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/30 flex justify-between items-center">
                             <div className="flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-gray-400" />
@@ -226,27 +264,27 @@ export default function Reports() {
                                 {previewData.length} RECORDS
                             </div>
                         </div>
-                        <div className="flex-1 overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="text-[10px] text-gray-400 uppercase bg-white border-b border-gray-50">
-                                    <tr>
-                                        {previewData.length > 0 && Object.keys(previewData[0]).map(key => (
-                                            <th key={key} className="px-6 py-4 font-bold tracking-wider">{key}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {previewData.length === 0 ? (
+
+                        {previewData.length === 0 ? (
+                            <div className="p-20">
+                                <EmptyState
+                                    title="No data found"
+                                    description="Try adjusting your filters"
+                                    icon="inbox"
+                                />
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="text-[10px] text-gray-400 uppercase bg-white border-b border-gray-50">
                                         <tr>
-                                            <td colSpan={6} className="px-6 py-20 text-center">
-                                                <div className="flex flex-col items-center justify-center grayscale opacity-50">
-                                                    <Layers className="w-12 h-12 text-gray-300 mb-3" />
-                                                    <p className="text-sm font-medium text-gray-500">No data found for the selected filters.</p>
-                                                </div>
-                                            </td>
+                                            {Object.keys(previewData[0]).map(key => (
+                                                <th key={key} className="px-6 py-4 font-bold tracking-wider">{key}</th>
+                                            ))}
                                         </tr>
-                                    ) : (
-                                        previewData.slice(0, 10).map((row, idx) => (
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50">
+                                        {previewData.slice(0, 10).map((row, idx) => (
                                             <tr key={idx} className="group hover:bg-indigo-50/30 transition-colors">
                                                 {Object.values(row).map((val, i) => (
                                                     <td key={i} className="px-6 py-4 whitespace-nowrap text-gray-600 font-medium">
@@ -254,19 +292,19 @@ export default function Reports() {
                                                     </td>
                                                 ))}
                                             </tr>
-                                        ))
-                                    )}
-                                    {previewData.length > 10 && (
-                                        <tr>
-                                            <td colSpan={Object.keys(previewData[0]).length} className="px-6 py-4 text-center text-[10px] font-bold text-gray-400 bg-gray-50/30 tracking-widest uppercase">
-                                                + {previewData.length - 10} additional rows in export
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                                        ))}
+                                        {previewData.length > 10 && (
+                                            <tr>
+                                                <td colSpan={Object.keys(previewData[0]).length} className="px-6 py-4 text-center text-[10px] font-bold text-gray-400 bg-gray-50/30 tracking-widest uppercase">
+                                                    + {previewData.length - 10} additional rows in export
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </Card>
                 </div>
             </div>
         </div>

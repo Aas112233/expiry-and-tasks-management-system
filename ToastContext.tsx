@@ -6,12 +6,15 @@ export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 export interface Toast {
     id: string;
+    title?: string;
     message: string;
     type: ToastType;
+    duration?: number;
 }
 
 interface ToastContextType {
-    showToast: (message: string, type: ToastType) => void;
+    showToast: (toast: string | Omit<Toast, 'id'>, type?: ToastType) => void;
+    dismissToast: (id: string) => void;
 }
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
@@ -23,26 +26,38 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
         setToasts(prev => prev.filter(t => t.id !== id));
     }, []);
 
-    const showToast = useCallback((message: string, type: ToastType) => {
+    const showToast = useCallback((toast: string | Omit<Toast, 'id'>, type?: ToastType) => {
         const id = Math.random().toString(36).substring(7);
-        setToasts(prev => [...prev, { id, message, type }]);
 
-        // Auto remove after 5s for better readability
-        setTimeout(() => {
-            removeToast(id);
-        }, 5000);
+        // Support both string and object API
+        const toastObj: Toast = typeof toast === 'string'
+            ? { id, message: toast, type: type || 'info', duration: 5000 }
+            : { id, ...toast };
+
+        setToasts(prev => [...prev, toastObj]);
+
+        const duration = toastObj.duration ?? 5000;
+        if (duration > 0) {
+            setTimeout(() => {
+                removeToast(id);
+            }, duration);
+        }
+    }, [removeToast]);
+
+    const dismissToast = useCallback((id: string) => {
+        removeToast(id);
     }, [removeToast]);
 
     return (
-        <ToastContext.Provider value={{ showToast }}>
+        <ToastContext.Provider value={{ showToast, dismissToast }}>
             {children}
             <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-3 pointer-events-none sm:top-6 sm:right-6">
                 {toasts.map(toast => (
                     <div
                         key={toast.id}
                         className={`
-                            pointer-events-auto flex items-stretch min-w-[320px] max-w-md 
-                            backdrop-blur-md bg-white/90 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] 
+                            pointer-events-auto flex items-stretch min-w-[320px] max-w-md
+                            backdrop-blur-md bg-white/90 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)]
                             border border-white/20 overflow-hidden animate-toast-in
                             ${toast.type === 'success' ? 'bg-green-50/95 border-l-4 border-l-green-500' : ''}
                             ${toast.type === 'error' ? 'bg-red-50/95 border-l-4 border-l-red-500' : ''}
@@ -58,15 +73,19 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                                 {toast.type === 'info' && <Info className="h-5 w-5 text-blue-600" />}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <h4 className={`text-sm font-semibold uppercase tracking-wider mb-0.5
-                                    ${toast.type === 'success' ? 'text-green-800' : ''}
-                                    ${toast.type === 'error' ? 'text-red-800' : ''}
-                                    ${toast.type === 'warning' ? 'text-amber-800' : ''}
-                                    ${toast.type === 'info' ? 'text-blue-800' : ''}
+                                {toast.title && (
+                                    <h4 className={`text-sm font-semibold uppercase tracking-wider mb-0.5
+                                        ${toast.type === 'success' ? 'text-green-800' : ''}
+                                        ${toast.type === 'error' ? 'text-red-800' : ''}
+                                        ${toast.type === 'warning' ? 'text-amber-800' : ''}
+                                        ${toast.type === 'info' ? 'text-blue-800' : ''}
+                                    `}>
+                                        {toast.title}
+                                    </h4>
+                                )}
+                                <p className={`text-sm leading-relaxed font-medium
+                                    ${toast.title ? 'text-gray-700' : 'text-gray-800'}
                                 `}>
-                                    {toast.type}
-                                </h4>
-                                <p className="text-sm text-gray-700 leading-relaxed font-medium">
                                     {toast.message}
                                 </p>
                             </div>
@@ -77,7 +96,6 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
-                        {/* Progress bar effect can be added here if desired */}
                     </div>
                 ))}
             </div>

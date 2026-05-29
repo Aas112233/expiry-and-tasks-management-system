@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Package,
     Search,
@@ -10,78 +9,127 @@ import {
     Hash,
     Scale,
     Calendar,
-    ChevronRight,
-    ArrowUpDown,
     Plus,
     X,
     Edit2,
+    Upload,
+    FileSpreadsheet,
     CheckCircle2,
-    Type
+    ChevronLeft,
+    ChevronRight
 } from 'lucide-react';
-import { catalogService, CatalogItem } from '../services/catalogService';
+import { catalogService, CatalogItem, ImportResult } from '../services/catalogService';
+import { Button, Badge, Card, Modal, Input, EmptyState, Skeleton, Select } from '../components/ui';
+import { PageHeader } from '../components/layout/PageHeader';
+import { useToast } from '../ToastContext';
+import { ConfirmDialog } from '../components/feedback/ConfirmDialog';
 
 const Catalog: React.FC = () => {
+    const { showToast } = useToast();
     const [items, setItems] = useState<CatalogItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+
+    // Pagination State
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(50);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+
+    // Summary Statistics
+    const [summary, setSummary] = useState({
+        totalProducts: 0,
+        uniqueBarcodes: 0,
+        dualNamedProducts: 0
+    });
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<CatalogItem | null>(null);
     const [formData, setFormData] = useState({
         productName: '',
+        productName2: '',
         barcode: '',
-        unit: 'pcs'
+        unit: 'pcs',
+        itemCode: '',
+        category: ''
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleSync = async () => {
-        if (!window.confirm('This will scan all inventory records and add missing barcodes to the catalog. Continue?')) {
-            return;
-        }
+    // Import modal state
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+    const [importResult, setImportResult] = useState<ImportResult | null>(null);
+    const [importError, setImportError] = useState<string | null>(null);
 
-        try {
-            setIsSyncing(true);
-            const result = await catalogService.syncWithInventory();
-            alert(`Sync complete! Added ${result.syncedCount} new product mappings to the catalog.`);
-            fetchCatalog();
-        } catch (error) {
-            console.error('Sync failed:', error);
-            alert('Failed to sync catalog with inventory.');
-        } finally {
-            setIsSyncing(false);
-        }
-    };
+    // Delete state
+    const [deleteId, setDeleteId] = useState<string | null>(null);
 
-    const fetchCatalog = async () => {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Search input debouncing (500ms)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    // Reset to page 1 when search changes
+    useEffect(() => {
+        setPage(1);
+    }, [debouncedSearch]);
+
+    const fetchCatalog = async (currentPage = page, currentLimit = limit, currentSearch = debouncedSearch) => {
         try {
             setLoading(true);
-            const data = await catalogService.getAll();
-            setItems(data);
+            const res = await catalogService.getAll(currentPage, currentLimit, currentSearch);
+            setItems(res.items);
+            setTotalPages(res.pagination.totalPages);
+            setTotalCount(res.pagination.totalCount);
+            setSummary(res.summary);
         } catch (error) {
             console.error('Failed to fetch catalog:', error);
+            showToast({ title: 'Error', message: 'Failed to load catalog', type: 'error' });
         } finally {
             setLoading(false);
-            setIsRefreshing(false);
         }
     };
 
     useEffect(() => {
-        fetchCatalog();
-    }, []);
+        fetchCatalog(page, limit, debouncedSearch);
+    }, [page, limit, debouncedSearch]);
 
-    const handleDelete = async (id: string) => {
-        if (!window.confirm('Are you sure you want to remove this item from the catalog? This will not affect existing inventory but will remove the auto-fill association.')) {
-            return;
-        }
-
+    const handleSync = async () => {
         try {
-            await catalogService.deleteItem(id);
-            setItems(items.filter(item => item.id !== id));
+            const result = await catalogService.syncWithInventory();
+            showToast({
+                title: 'Sync Complete',
+                message: `Added ${result.syncedCount} new product mappings`,
+                type: 'success'
+            });
+            fetchCatalog(page, limit, debouncedSearch);
         } catch (error) {
-            alert('Failed to delete catalog item');
+            console.error('Sync failed:', error);
+            showToast({ title: 'Error', message: 'Failed to sync catalog', type: 'error' });
+        }
+    };
+
+    const handleDeleteClick = (id: string) => {
+        setDeleteId(id);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!deleteId) return;
+        try {
+            await catalogService.deleteItem(deleteId);
+            showToast({ title: 'Success', message: 'Catalog item deleted', type: 'success' });
+            setDeleteId(null);
+            fetchCatalog();
+        } catch (error) {
+            showToast({ title: 'Error', message: 'Failed to delete item', type: 'error' });
         }
     };
 
@@ -89,8 +137,11 @@ const Catalog: React.FC = () => {
         setEditingItem(item);
         setFormData({
             productName: item.productName,
+            productName2: item.productName2 || '',
             barcode: item.barcode,
-            unit: item.unit
+            unit: item.unit,
+            itemCode: item.itemCode || '',
+            category: ''
         });
         setIsModalOpen(true);
     };
@@ -99,8 +150,11 @@ const Catalog: React.FC = () => {
         setEditingItem(null);
         setFormData({
             productName: '',
+            productName2: '',
             barcode: '',
-            unit: 'pcs'
+            unit: 'pcs',
+            itemCode: '',
+            category: ''
         });
         setIsModalOpen(true);
     };
@@ -109,353 +163,497 @@ const Catalog: React.FC = () => {
         e.preventDefault();
         try {
             setIsSubmitting(true);
+            const payload = {
+                productName: formData.productName,
+                productName2: formData.productName2,
+                barcode: formData.barcode,
+                unit: formData.unit,
+                itemCode: formData.itemCode,
+                category: formData.category
+            };
+
             if (editingItem) {
-                await catalogService.updateItem(editingItem.id, formData);
+                await catalogService.updateItem(editingItem.id, payload);
+                showToast({ title: 'Success', message: 'Item updated successfully', type: 'success' });
             } else {
-                await catalogService.createItem(formData);
+                await catalogService.createItem(payload);
+                showToast({ title: 'Success', message: 'Item created successfully', type: 'success' });
             }
             setIsModalOpen(false);
             fetchCatalog();
         } catch (error) {
-            alert('Failed to save catalog item');
+            showToast({ title: 'Error', message: 'Failed to save item', type: 'error' });
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    const filteredItems = items.filter(item =>
-        item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.barcode.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Import Handlers
+    const openImportModal = () => {
+        setImportFile(null);
+        setImportResult(null);
+        setImportError(null);
+        setIsImporting(false);
+        setIsImportModalOpen(true);
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setImportFile(file);
+            setImportError(null);
+        }
+    };
+
+    const handleImport = async () => {
+        if (!importFile) return;
+
+        try {
+            setIsImporting(true);
+            setImportError(null);
+
+            const result = await catalogService.importExcel(importFile);
+            setImportResult(result);
+            showToast({
+                title: 'Import Complete',
+                message: `Created ${result.created} items, updated ${result.updated}`,
+                type: 'success'
+            });
+            fetchCatalog();
+        } catch (error: any) {
+            setImportError(error.message || 'Import failed');
+            showToast({ title: 'Error', message: 'Import failed', type: 'error' });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const limitOptions = [10, 20, 50, 100, 200].map(opt => ({ value: String(opt), label: String(opt) }));
 
     return (
-        <div className="space-y-8 animate-fade-in p-2">
-            {/* Header section with enhanced visibility */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="relative">
-                    <div className="absolute -left-4 top-0 w-1 h-12 bg-blue-500 rounded-full blur-sm"></div>
-                    <h1 className="text-4xl font-extrabold text-white tracking-tight flex items-center gap-4">
-                        <Database className="w-10 h-10 text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
-                        Product Catalog
-                    </h1>
-                    <p className="text-slate-300 font-medium mt-2 flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                        Centralized inventory intelligence and barcode mappings.
-                    </p>
-                </div>
+        <div className="space-y-6">
+            <PageHeader
+                title="Product Catalog"
+                description="Centralized inventory intelligence and barcode mappings."
+                actions={
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="secondary"
+                            leftIcon={<RefreshCw />}
+                            onClick={() => fetchCatalog()}
+                            disabled={loading}
+                        >
+                            Refresh
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            leftIcon={<RefreshCw />}
+                            onClick={handleSync}
+                        >
+                            Sync with Inventory
+                        </Button>
+                        <Button variant="primary" leftIcon={<Plus />} onClick={openAddModal}>
+                            Add New Item
+                        </Button>
+                        <Button variant="outline" leftIcon={<Upload />} onClick={openImportModal}>
+                            Import Excel
+                        </Button>
+                    </div>
+                }
+            />
 
-                <div className="flex flex-wrap items-center gap-4">
-                    <button
-                        onClick={openAddModal}
-                        className="flex items-center gap-2 px-6 py-3 bg-white text-slate-900 font-bold rounded-2xl shadow-xl hover:bg-slate-100 transition-all active:scale-95"
-                    >
-                        <Plus className="w-5 h-5" />
-                        Add New Item
-                    </button>
-
-                    <button
-                        onClick={handleSync}
-                        disabled={isSyncing}
-                        className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/25 transition-all active:scale-95 disabled:opacity-50"
-                    >
-                        <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
-                        {isSyncing ? 'Synchronizing...' : 'Sync with Inventory'}
-                    </button>
-
-                    <button
-                        onClick={() => { setIsRefreshing(true); fetchCatalog(); }}
-                        disabled={isRefreshing}
-                        className="flex items-center gap-2 px-6 py-3 bg-slate-800/80 hover:bg-slate-700 text-white font-bold rounded-2xl border border-white/10 shadow-xl transition-all active:scale-95 disabled:opacity-50"
-                    >
-                        <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    </button>
-                </div>
-            </div>
-
-            {/* Stats Cards - Enhanced Contrast */}
+            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="group p-1 rounded-3xl bg-gradient-to-br from-blue-500/20 to-transparent border border-white/10 hover:border-blue-500/30 transition-all">
-                    <div className="p-6 bg-slate-900/60 backdrop-blur-2xl rounded-[1.4rem]">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="p-3 bg-blue-500/10 rounded-2xl border border-blue-500/20">
-                                <Hash className="w-6 h-6 text-blue-400" />
-                            </div>
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 bg-blue-500/10 px-2 py-1 rounded-md">Master Data</span>
+                <Card>
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                            <Hash className="w-6 h-6" />
                         </div>
-                        <p className="text-slate-300 font-bold text-sm tracking-wide uppercase">Total Catalog SKUs</p>
-                        <p className="text-4xl font-black text-white mt-1 drop-shadow-md">{items.length}</p>
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Total Catalog SKUs</span>
                     </div>
-                </div>
+                    <p className="text-4xl font-black text-gray-900">{summary.totalProducts}</p>
+                </Card>
 
-                <div className="group p-1 rounded-3xl bg-gradient-to-br from-purple-500/20 to-transparent border border-white/10 hover:border-purple-500/30 transition-all">
-                    <div className="p-6 bg-slate-900/60 backdrop-blur-2xl rounded-[1.4rem]">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="p-3 bg-purple-500/10 rounded-2xl border border-purple-500/20">
-                                <Scale className="w-6 h-6 text-purple-400" />
-                            </div>
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400 bg-purple-500/10 px-2 py-1 rounded-md">Unique Identifiers</span>
+                <Card>
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                            <Scale className="w-6 h-6" />
                         </div>
-                        <p className="text-slate-300 font-bold text-sm tracking-wide uppercase">Active Barcodes</p>
-                        <p className="text-4xl font-black text-white mt-1 drop-shadow-md">
-                            {new Set(items.map(i => i.barcode)).size}
-                        </p>
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Active Barcodes</span>
                     </div>
-                </div>
+                    <p className="text-4xl font-black text-gray-900">{summary.uniqueBarcodes}</p>
+                </Card>
 
-                <div className="group p-1 rounded-3xl bg-gradient-to-br from-orange-500/20 to-transparent border border-white/10 hover:border-orange-500/30 transition-all">
-                    <div className="p-6 bg-slate-900/60 backdrop-blur-2xl rounded-[1.4rem]">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="p-3 bg-orange-500/10 rounded-2xl border border-orange-500/20">
-                                <RefreshCw className="w-6 h-6 text-orange-400" />
-                            </div>
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-orange-400 bg-orange-500/10 px-2 py-1 rounded-md">Auto-Update</span>
+                <Card>
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                            <Scale className="w-6 h-6" />
                         </div>
-                        <p className="text-slate-300 font-bold text-sm tracking-wide uppercase">Sync Status</p>
-                        <p className="text-4xl font-black text-white mt-1 drop-shadow-md">Active</p>
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Dual-Named Products</span>
                     </div>
-                </div>
+                    <p className="text-4xl font-black text-gray-900">{summary.dualNamedProducts}</p>
+                </Card>
             </div>
 
-            {/* Main Content Table - Enhanced Text Visibility */}
-            <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-[2rem] blur-2xl opacity-50"></div>
-
-                <div className="relative bg-slate-900/80 backdrop-blur-3xl rounded-[2rem] border border-white/10 overflow-hidden shadow-2xl">
-                    <div className="p-8 border-b border-white/5 bg-slate-800/20 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                        <div className="relative max-w-lg w-full">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-400/70" />
-                            <input
-                                type="text"
-                                placeholder="Search by name, barcode, or SKU..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-12 pr-4 py-4 bg-slate-950/50 border border-white/10 rounded-[1.25rem] text-white text-lg placeholder:text-slate-500 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/50 transition-all shadow-inner"
-                            />
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-300 text-sm font-bold bg-white/5 px-4 py-2 rounded-xl">
-                            <ArrowUpDown className="w-4 h-4 text-blue-400" />
-                            Sorting by Last Updated
-                        </div>
+            {/* Search and Filters */}
+            <Card>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="relative flex-1 max-w-lg">
+                        <input
+                            type="text"
+                            placeholder="Search by name, barcode, item code..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm"
+                        />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <span>Showing {totalCount > 0 ? ((page - 1) * limit) + 1 : 0} - {Math.min(page * limit, totalCount)} of {totalCount}</span>
+                    </div>
+                </div>
+            </Card>
 
+            {/* Main Table */}
+            <Card padding="none">
+                {loading ? (
+                    <div className="p-6">
+                        <Skeleton variant="line" className="w-full h-12 mb-2" />
+                        <Skeleton variant="line" className="w-full h-12 mb-2" />
+                        <Skeleton variant="line" className="w-full h-12" />
+                    </div>
+                ) : items.length === 0 ? (
+                    <EmptyState
+                        title="No catalog items found"
+                        description={searchTerm ? `No results for "${searchTerm}"` : 'Add items manually or import from Excel'}
+                        icon="inbox"
+                        actionLabel="Add Item"
+                        onAction={openAddModal}
+                    />
+                ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-950/40 text-slate-200 text-xs font-black uppercase tracking-[0.15em] border-b border-white/5">
-                                    <th className="px-8 py-6">Product Information</th>
-                                    <th className="px-8 py-6">Code / Identifier</th>
-                                    <th className="px-8 py-6">Standard Unit</th>
-                                    <th className="px-8 py-6">Catalog Record</th>
-                                    <th className="px-8 py-6 text-right">Actions</th>
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-gray-500 uppercase bg-gray-50/50 border-b border-gray-100">
+                                <tr>
+                                    <th className="px-6 py-4 font-semibold">Product</th>
+                                    <th className="px-6 py-4 font-semibold">Barcode</th>
+                                    <th className="px-6 py-4 font-semibold">Unit</th>
+                                    <th className="px-6 py-4 font-semibold">Last Updated</th>
+                                    <th className="px-6 py-4 font-semibold text-right">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {loading ? (
-                                    Array.from({ length: 5 }).map((_, i) => (
-                                        <tr key={i} className="animate-pulse">
-                                            <td colSpan={5} className="px-8 py-10">
-                                                <div className="h-6 bg-white/5 rounded-xl w-full"></div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                ) : filteredItems.length > 0 ? (
-                                    filteredItems.map((item) => (
-                                        <tr key={item.id} className="hover:bg-blue-500/[0.03] transition-colors group/row">
-                                            <td className="px-8 py-6">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="p-3 bg-blue-500/10 rounded-2xl group-hover/row:scale-110 transition-transform shadow-lg border border-blue-500/10">
-                                                        <Package className="w-6 h-6 text-blue-400" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-bold text-white text-lg tracking-tight leading-tight">{item.productName}</p>
-                                                        <p className="text-blue-400/60 text-[10px] font-black uppercase tracking-widest mt-0.5">Verified Entry</p>
-                                                    </div>
+                            <tbody className="divide-y divide-gray-50">
+                                {items.map((item) => (
+                                    <tr key={item.id} className="group hover:bg-blue-50/30 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                                    <Package className="w-5 h-5" />
                                                 </div>
-                                            </td>
-                                            <td className="px-8 py-6 whitespace-nowrap">
-                                                <code className="text-indigo-300 font-black text-md bg-indigo-500/10 px-3 py-1.5 rounded-lg border border-indigo-500/20 select-all">
-                                                    {item.barcode}
-                                                </code>
-                                            </td>
-                                            <td className="px-8 py-6">
-                                                <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-white/10 rounded-xl text-sm font-black text-white shadow-sm capitalize">
-                                                    <ChevronRight className="w-3 h-3 text-emerald-400" />
-                                                    {item.unit}
-                                                </span>
-                                            </td>
-                                            <td className="px-8 py-6">
-                                                <div className="flex items-center gap-2 text-slate-300 font-bold">
-                                                    <Calendar className="w-4 h-4 text-orange-400" />
-                                                    {new Date(item.updatedAt).toLocaleDateString(undefined, {
-                                                        year: 'numeric',
-                                                        month: 'short',
-                                                        day: 'numeric'
-                                                    })}
-                                                </div>
-                                            </td>
-                                            <td className="px-8 py-6 text-right">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    <button
-                                                        onClick={() => openEditModal(item)}
-                                                        className="p-3 text-slate-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-2xl transition-all shadow-sm active:scale-90"
-                                                        title="Edit catalog item"
-                                                    >
-                                                        <Edit2 className="w-5 h-5" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(item.id)}
-                                                        className="p-3 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-2xl transition-all shadow-sm active:scale-90"
-                                                        title="Permanently remove from catalog"
-                                                    >
-                                                        <Trash2 className="w-6 h-6" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan={5} className="px-8 py-32 text-center bg-slate-950/20">
-                                            <div className="flex flex-col items-center gap-6">
-                                                <div className="relative">
-                                                    <div className="absolute -inset-4 bg-blue-500/20 rounded-full blur-2xl animate-pulse"></div>
-                                                    <div className="relative p-8 bg-slate-800/50 rounded-full border border-white/5">
-                                                        <AlertCircle className="w-16 h-16 text-slate-500 opacity-50" />
-                                                    </div>
-                                                </div>
-                                                <div className="max-w-xs mx-auto">
-                                                    <p className="text-2xl font-black text-white mb-2">Discovery Needed</p>
-                                                    <p className="text-slate-400 font-medium">
-                                                        Try syncing with existing inventory or scan a new product to populate this list.
-                                                    </p>
+                                                <div>
+                                                    <p className="font-semibold text-gray-900">{item.productName}</p>
+                                                    {item.productName2 && (
+                                                        <p className="text-xs text-gray-500">{item.productName2}</p>
+                                                    )}
                                                 </div>
                                             </div>
                                         </td>
+                                        <td className="px-6 py-4">
+                                            <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
+                                                {item.barcode}
+                                            </code>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <Badge variant="neutral">{item.unit}</Badge>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-600">
+                                            <div className="flex items-center gap-2">
+                                                <Calendar className="w-4 h-4 text-gray-400" />
+                                                {new Date(item.updatedAt).toLocaleDateString(undefined, {
+                                                    year: 'numeric',
+                                                    month: 'short',
+                                                    day: 'numeric'
+                                                })}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex items-center justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => openEditModal(item)}
+                                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                    title="Edit"
+                                                >
+                                                    <Edit2 className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteClick(item.id)}
+                                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </td>
                                     </tr>
-                                )}
+                                ))}
                             </tbody>
                         </table>
                     </div>
+                )}
 
-                    <div className="p-6 bg-slate-950/40 border-t border-white/5 flex justify-between items-center">
-                        <span className="text-slate-400 text-sm font-bold">Showing {filteredItems.length} entries</span>
-                        <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-                            <span className="text-emerald-400 text-xs font-black uppercase tracking-widest">System Synchronized</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Premium Add/Edit Modal */}
-            {isModalOpen && createPortal(
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-                    <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-xl overflow-hidden shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] animate-scale-in">
-                        <div className="p-8 border-b border-white/5 bg-slate-800/20 flex justify-between items-center">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-blue-500/10 rounded-2xl">
-                                    <Database className="w-6 h-6 text-blue-400" />
-                                </div>
-                                <div>
-                                    <h2 className="text-2xl font-black text-white tracking-tight">
-                                        {editingItem ? 'Edit Entry' : 'Manual Registry'}
-                                    </h2>
-                                    <p className="text-slate-400 text-sm font-medium">Update the global product intelligence.</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setIsModalOpen(false)}
-                                className="p-3 hover:bg-white/5 rounded-2xl text-slate-500 hover:text-white transition-all"
+                {/* Pagination */}
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
+                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                            <span>Show:</span>
+                            <select
+                                value={limit}
+                                onChange={(e) => {
+                                    setLimit(Number(e.target.value));
+                                    setPage(1);
+                                }}
+                                className="px-3 py-1.5 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                             >
-                                <X className="w-6 h-6" />
+                                {limitOptions.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                disabled={page === 1 || loading}
+                                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <ChevronLeft className="w-5 h-5" />
+                            </button>
+
+                            <span className="text-sm font-medium text-gray-600 px-2">
+                                Page {page} of {totalPages}
+                            </span>
+
+                            <button
+                                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                                disabled={page === totalPages || loading}
+                                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                <ChevronRight className="w-5 h-5" />
                             </button>
                         </div>
+                    </div>
+                )}
+            </Card>
 
-                        <form onSubmit={handleSubmit} className="p-8 space-y-6">
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-slate-300 font-black text-xs uppercase tracking-widest ml-1">
-                                    <Type className="w-3 h-3 text-blue-400" />
-                                    Product Name
-                                </label>
-                                <input
+            {/* Add/Edit Modal */}
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title={editingItem ? 'Edit Catalog Item' : 'Add New Catalog Item'}
+                description="Enter product details for barcode auto-fill during inventory entry"
+                size="lg"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>
+                            Cancel
+                        </Button>
+                        <Button variant="primary" onClick={handleSubmit} isLoading={isSubmitting}>
+                            {editingItem ? 'Save Changes' : 'Add Item'}
+                        </Button>
+                    </>
+                }
+            >
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    {/* Product Information Section */}
+                    <div>
+                        <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                            <Package className="w-4 h-4 text-blue-600" />
+                            Product Information
+                        </h4>
+                        <div className="space-y-4">
+                            <Input
+                                label="Product Name *"
+                                required
+                                placeholder="e.g., Organic Whole Milk"
+                                value={formData.productName}
+                                onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                                hint="This is the primary name that will appear in inventory"
+                            />
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input
+                                    label="Barcode / SKU *"
                                     required
                                     type="text"
-                                    value={formData.productName}
-                                    onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                                    className="w-full px-6 py-4 bg-slate-950/50 border border-white/10 rounded-2xl text-white font-bold placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all shadow-inner"
-                                    placeholder="Enter canonical name..."
+                                    pattern="[0-9]*"
+                                    inputMode="numeric"
+                                    placeholder="e.g., 883471002"
+                                    value={formData.barcode}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === '' || /^\d+$/.test(val)) {
+                                            setFormData({ ...formData, barcode: val });
+                                        }
+                                    }}
+                                    hint="Numeric barcode for scanning"
                                 />
-                            </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="flex items-center gap-2 text-slate-300 font-black text-xs uppercase tracking-widest ml-1">
-                                        <Hash className="w-3 h-3 text-purple-400" />
-                                        Barcode / SKU
-                                    </label>
-                                    <input
-                                        required
-                                        type="text"
-                                        pattern="[0-9]*"
-                                        inputMode="numeric"
-                                        value={formData.barcode}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            if (val === '' || /^\d+$/.test(val)) {
-                                                setFormData({ ...formData, barcode: val });
-                                            }
-                                        }}
-                                        className="w-full px-6 py-4 bg-slate-950/50 border border-white/10 rounded-2xl text-white font-mono font-bold placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all shadow-inner"
-                                        placeholder="00000000..."
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="flex items-center gap-2 text-slate-300 font-black text-xs uppercase tracking-widest ml-1">
-                                        <Scale className="w-3 h-3 text-orange-400" />
-                                        Default Unit
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                                        Unit of Measure *
                                     </label>
                                     <select
                                         value={formData.unit}
                                         onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                                        className="w-full px-6 py-4 bg-slate-950/50 border border-white/10 rounded-2xl text-white font-bold focus:outline-none focus:ring-2 focus:ring-orange-500/40 transition-all shadow-inner appearance-none cursor-pointer"
+                                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm bg-white transition-colors"
                                     >
-                                        <option value="pcs">pcs</option>
-                                        <option value="box">box</option>
-                                        <option value="bundle">bundle</option>
-                                        <option value="carton">carton</option>
+                                        <option value="pcs">pcs - Pieces</option>
+                                        <option value="box">box - Box</option>
+                                        <option value="bundle">bundle - Bundle</option>
+                                        <option value="carton">carton - Carton</option>
+                                        <option value="kg">kg - Kilogram</option>
+                                        <option value="g">g - Gram</option>
+                                        <option value="l">l - Liter</option>
+                                        <option value="ml">ml - Milliliter</option>
                                     </select>
                                 </div>
                             </div>
-
-                            <div className="pt-6 flex gap-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl transition-all active:scale-95"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    disabled={isSubmitting}
-                                    type="submit"
-                                    className="flex-2 flex items-center justify-center gap-2 px-12 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-2xl shadow-lg shadow-blue-500/25 transition-all active:scale-95 disabled:opacity-50"
-                                >
-                                    {isSubmitting ? (
-                                        <RefreshCw className="w-5 h-5 animate-spin" />
-                                    ) : (
-                                        <>
-                                            <CheckCircle2 className="w-5 h-5" />
-                                            {editingItem ? 'Save Changes' : 'Register Item'}
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </form>
+                        </div>
                     </div>
-                </div>,
-                document.body
-            )}
+
+                    {/* Additional Information Section */}
+                    <div className="pt-4 border-t border-gray-100">
+                        <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                            <Database className="w-4 h-4 text-purple-600" />
+                            Additional Details
+                        </h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                label="Item Code"
+                                placeholder="e.g., ITEM-001"
+                                value={formData.itemCode}
+                                onChange={(e) => setFormData({ ...formData, itemCode: e.target.value })}
+                                hint="Optional internal item code"
+                            />
+
+                            <Input
+                                label="Category"
+                                placeholder="e.g., Dairy, Beverages"
+                                value={formData.category}
+                                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                hint="Optional product category"
+                            />
+                        </div>
+                        <div className="mt-4">
+                            <Input
+                                label="Alternative Name"
+                                placeholder="e.g., Secondary product name or alias"
+                                value={formData.productName2}
+                                onChange={(e) => setFormData({ ...formData, productName2: e.target.value })}
+                                hint="Optional secondary name (e.g., local language)"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Info Box */}
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg flex-shrink-0">
+                                <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h5 className="font-semibold text-blue-900 text-sm">Auto-Fill Enabled</h5>
+                                <p className="text-xs text-blue-700 mt-1">
+                                    When adding inventory items, scanning this barcode will automatically fill the product name and unit.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Import Modal */}
+            <Modal
+                isOpen={isImportModalOpen}
+                onClose={() => setIsImportModalOpen(false)}
+                title="Import Catalog from Excel"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setIsImportModalOpen(false)} disabled={isImporting}>
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="primary"
+                            leftIcon={<FileSpreadsheet />}
+                            onClick={handleImport}
+                            isLoading={isImporting}
+                            disabled={!importFile}
+                        >
+                            {isImporting ? 'Importing...' : 'Import Data'}
+                        </Button>
+                    </>
+                }
+            >
+                <div className="space-y-4">
+                    <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors"
+                    >
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".xlsx,.xls"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+                        <FileSpreadsheet className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                        {importFile ? (
+                            <div>
+                                <p className="font-semibold text-gray-900">{importFile.name}</p>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    {(importFile.size / 1024).toFixed(1)} KB
+                                </p>
+                            </div>
+                        ) : (
+                            <div>
+                                <p className="font-semibold text-gray-900">Click to upload or drag and drop</p>
+                                <p className="text-sm text-gray-500 mt-1">Excel files (.xlsx, .xls)</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {importError && (
+                        <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">
+                            {importError}
+                        </div>
+                    )}
+
+                    {importResult && (
+                        <div className="p-4 bg-green-50 border border-green-100 rounded-xl">
+                            <div className="flex items-start gap-3">
+                                <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                                <div className="text-sm text-green-800">
+                                    <p className="font-semibold">Import completed successfully!</p>
+                                    <p className="mt-1">
+                                        Created: {importResult.created} | Updated: {importResult.updated} | Skipped: {importResult.skipped}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </Modal>
+
+            {/* Delete Confirmation */}
+            <ConfirmDialog
+                isOpen={!!deleteId}
+                onClose={() => setDeleteId(null)}
+                onConfirm={handleConfirmDelete}
+                title="Delete Catalog Item?"
+                description="Are you sure you want to remove this item from the catalog? This will not affect existing inventory."
+                variant="danger"
+                confirmLabel="Delete"
+            />
         </div>
     );
 };

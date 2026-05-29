@@ -31,12 +31,68 @@ export const getCatalogItemByBarcode = async (req: Request, res: Response): Prom
 
 export const getAllCatalogItems = async (req: Request, res: Response): Promise<void> => {
     try {
-        const items = await withTransactionRetry(() =>
-            (prisma as any).productCatalog.findMany({
-                orderBy: { updatedAt: 'desc' }
-            })
+        const { page = '1', limit = '50', search = '' } = req.query;
+        const pageNum = parseInt(page as string, 10) || 1;
+        const limitNum = parseInt(limit as string, 10) || 50;
+        const skip = (pageNum - 1) * limitNum;
+
+        const whereClause: any = {};
+        if (search) {
+            const searchStr = search as string;
+            whereClause.OR = [
+                { barcode: { contains: searchStr, mode: 'insensitive' } },
+                { itemCode: { contains: searchStr, mode: 'insensitive' } },
+                { productName: { contains: searchStr, mode: 'insensitive' } },
+                { productName2: { contains: searchStr, mode: 'insensitive' } },
+                { productName3: { contains: searchStr, mode: 'insensitive' } },
+            ];
+        }
+
+        const [items, totalCount, totalProducts, dualNamedProducts, uniqueBarcodesGroup] = await withTransactionRetry(() =>
+            Promise.all([
+                (prisma as any).productCatalog.findMany({
+                    where: whereClause,
+                    orderBy: { updatedAt: 'desc' },
+                    skip,
+                    take: limitNum
+                }),
+                (prisma as any).productCatalog.count({
+                    where: whereClause
+                }),
+                // Total products overall
+                (prisma as any).productCatalog.count(),
+                // Dual named products overall
+                (prisma as any).productCatalog.count({
+                    where: {
+                        productName2: { not: null }
+                    }
+                }),
+                // Group by barcode to get unique barcodes overall
+                (prisma as any).productCatalog.groupBy({
+                    by: ['barcode']
+                })
+            ])
         );
-        res.json(items);
+
+        const uniqueBarcodes = (uniqueBarcodesGroup as any[]).length;
+        const totalPages = Math.ceil(totalCount / limitNum);
+
+        res.json({
+            items,
+            pagination: {
+                totalCount,
+                page: pageNum,
+                limit: limitNum,
+                totalPages,
+                hasPrevPage: pageNum > 1,
+                hasNextPage: pageNum < totalPages
+            },
+            summary: {
+                totalProducts,
+                uniqueBarcodes,
+                dualNamedProducts
+            }
+        });
     } catch (error: any) {
         sendErrorResponse(res, error, 'Unable to load catalog items.', 'Catalog Fetch All');
     }

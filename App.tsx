@@ -20,6 +20,7 @@ import { BranchProvider } from './BranchContext';
 import { SearchProvider } from './SearchContext';
 import { AuthProvider, useAuth } from './AuthContext';
 
+
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth();
 

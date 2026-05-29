@@ -12,10 +12,12 @@ import {
     Pie,
     Cell
 } from 'recharts';
-import { AlertCircle, TrendingDown, Loader2 } from 'lucide-react';
+import { AlertCircle, TrendingDown, Loader2, RefreshCw, FileText } from 'lucide-react';
 import { useBranch } from '../BranchContext';
 import { inventoryService } from '../services/inventoryService';
 import { ExpiredItem, ExpiryStatus } from '../types';
+import { Card, Button, Skeleton } from '../components/ui';
+import { PageHeader } from '../components/layout/PageHeader';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
@@ -40,15 +42,6 @@ export default function Analysis() {
         }
     };
 
-    if (isLoading) {
-        return (
-            <div className="flex h-96 items-center justify-center text-gray-400">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                <span className="ml-3 font-medium">Analyzing real-time data...</span>
-            </div>
-        );
-    }
-
     // 1. DYNAMIC BRANCH RISK CALCULATION
     const branchMap = new Map<string, any>();
     items.forEach(item => {
@@ -66,7 +59,7 @@ export default function Analysis() {
         ? chartData
         : chartData.filter(d => d.name === selectedBranch);
 
-    // 2. CATEGORY RISK CALCULATION (Using Branch/Unit as proxy for category if not available)
+    // 2. CATEGORY RISK CALCULATION
     const categoryMap = new Map<string, number>();
     items.forEach(item => {
         const cat = item.unitName || 'General';
@@ -80,45 +73,80 @@ export default function Analysis() {
 
     // 3. KPI CALCULATIONS
     const highRiskItems = items.filter(i => i.status === ExpiryStatus.Critical || i.status === ExpiryStatus.Expired).length;
-    const highestRiskBranch = chartData.sort((a, b) => b['Critical (0-15)'] - a['Critical (0-15)'])[0]?.name || 'N/A';
+    const sortedByRisk = [...chartData].sort((a, b) => b['Critical (0-15)'] - a['Critical (0-15)']);
+    const highestRiskBranch = sortedByRisk[0]?.name || 'N/A';
 
-    return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Expiry Analysis</h1>
-                <div className="flex gap-2">
-                    <button onClick={loadData} className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm transition-all">
-                        Refresh
-                    </button>
-                    <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-md shadow-blue-100 transition-all">Export Report</button>
+    if (isLoading) {
+        return (
+            <div className="space-y-6">
+                <Skeleton className="w-48 h-8" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {[1, 2, 3].map(i => (
+                        <Card key={i}>
+                            <Skeleton variant="line" className="w-32 h-4 mb-2" />
+                            <Skeleton variant="line" className="w-24 h-8" />
+                        </Card>
+                    ))}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <Card><Skeleton variant="line" className="w-full h-80" /></Card>
+                    <Card><Skeleton variant="line" className="w-full h-80" /></Card>
                 </div>
             </div>
+        );
+    }
 
+    return (
+        <div className="space-y-6">
+            <PageHeader
+                title="Expiry Analysis"
+                description="Real-time insights and risk assessment across branches."
+                actions={
+                    <div className="flex gap-2">
+                        <Button
+                            variant="secondary"
+                            leftIcon={<RefreshCw className={isLoading ? 'animate-spin' : ''} />}
+                            onClick={loadData}
+                            disabled={isLoading}
+                        >
+                            Refresh
+                        </Button>
+                        <Button variant="primary" leftIcon={<FileText />}>
+                            Export Report
+                        </Button>
+                    </div>
+                }
+            />
+
+            {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <Card>
                     <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">High Risk Items</h3>
                     <p className="text-3xl font-black text-gray-900 mt-2">{highRiskItems}</p>
                     <div className="flex items-center mt-2 text-red-600 text-sm font-semibold">
                         <TrendingDown className="w-4 h-4 mr-1" />
                         <span>Dynamic Live Status</span>
                     </div>
-                </div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                </Card>
+
+                <Card>
                     <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Highest Risk Branch</h3>
                     <p className="text-xl font-bold text-gray-900 mt-2 truncate">{highestRiskBranch}</p>
-                    <p className="text-sm text-gray-400 mt-2">{items.filter(i => i.branch === highestRiskBranch).length} total items</p>
-                </div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                    <p className="text-sm text-gray-400 mt-2">
+                        {items.filter(i => i.branch === highestRiskBranch).length} total items
+                    </p>
+                </Card>
+
+                <Card>
                     <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">Analysis Accuracy</h3>
                     <p className="text-3xl font-black text-blue-600 mt-2">100%</p>
                     <p className="text-sm text-green-600 mt-2 font-medium">Connected to Production DB</p>
-                </div>
+                </Card>
             </div>
 
+            {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Branch Comparison */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-bold text-gray-900 mb-6 px-1">Expiry Risk by Branch</h3>
+                <Card title="Expiry Risk by Branch">
                     <div className="h-80 w-full min-w-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={filteredChartData} layout="vertical" barSize={selectedBranch === 'All Branches' ? undefined : 60}>
@@ -133,11 +161,9 @@ export default function Analysis() {
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
-                </div>
+                </Card>
 
-                {/* Category Pie */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-bold text-gray-900 mb-6 px-1">Risk by Product Group</h3>
+                <Card title="Risk by Product Group">
                     <div className="h-80 w-full min-w-0">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
@@ -161,29 +187,33 @@ export default function Analysis() {
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
-                </div>
+                </Card>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-                    <AlertCircle className="w-5 h-5 text-indigo-500 mr-2" />
-                    Insights & Recommendations
-                </h3>
+            {/* Insights */}
+            <Card
+                title={
+                    <span className="flex items-center">
+                        <AlertCircle className="w-5 h-5 text-indigo-500 mr-2" />
+                        Insights & Recommendations
+                    </span>
+                }
+            >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100">
                         <h4 className="font-bold text-indigo-900 mb-2">Smart Allocation</h4>
                         <p className="text-sm text-indigo-800 leading-relaxed">
-                            Based on live database analysis, {highestRiskBranch} currently has the densest concentration of critical items. Consider redistributing staff to focus on clearance tasks at this location.
+                            Based on live database analysis, <strong>{highestRiskBranch}</strong> currently has the densest concentration of critical items. Consider redistributing staff to focus on clearance tasks at this location.
                         </p>
                     </div>
                     <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100">
                         <h4 className="font-bold text-emerald-900 mb-2">Automated Notifications</h4>
                         <p className="text-sm text-emerald-800 leading-relaxed">
-                            All {highRiskItems} high-risk items have been flagged. The system is synchronized with the production database to provide valid reporting for the current session.
+                            All <strong>{highRiskItems}</strong> high-risk items have been flagged. The system is synchronized with the production database to provide valid reporting for the current session.
                         </p>
                     </div>
                 </div>
-            </div>
+            </Card>
         </div>
     );
 }

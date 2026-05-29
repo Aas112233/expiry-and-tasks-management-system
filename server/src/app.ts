@@ -34,6 +34,7 @@ const allowedOrigins = new Set([
     'https://expiry-and-tasks-management-system.vercel.app',
     'http://localhost:5173',
     'http://localhost:3000',
+    'http://localhost:21194',
     ...configuredOrigins,
 ]);
 
@@ -44,8 +45,11 @@ app.use(cors({
             return;
         }
 
+        // Allow localhost ports for development
         if (
             allowedOrigins.has(origin) ||
+            origin.startsWith('http://localhost:') ||
+            origin.startsWith('http://127.0.0.1:') ||
             origin.endsWith('.onrender.com') ||
             origin.endsWith('.vercel.app')
         ) {
@@ -55,8 +59,8 @@ app.use(cors({
 
         callback(new Error(`Origin not allowed by CORS: ${origin}`));
     },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     credentials: true
 }));
 

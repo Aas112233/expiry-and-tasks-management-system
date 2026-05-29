@@ -54,6 +54,26 @@ export const authLimiter = rateLimit({
     }
 });
 
+// Specific rate limiter for Login to prevent brute force
+export const loginLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 5, // Limit to 5 login attempts per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        success: false,
+        error: 'Too many login attempts. Please wait a moment.',
+        timestamp: new Date().toISOString()
+    },
+    handler: (req: Request, res: Response) => {
+        res.status(429).json({
+            success: false,
+            error: 'Too many login attempts. Please wait 1 minute before trying again.',
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
 // Strict rate limiter for sensitive operations
 export const strictLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour

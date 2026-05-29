@@ -89,12 +89,21 @@ model Branch {
 }
 
 model ProductCatalog {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  barcode     String
-  productName String
-  unit        String   @default("pcs")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  barcode       String
+  productName   String
+  productName2  String?
+  productName3  String?
+  unit          String   @default("pcs")
+  unitName      String?
+  unitFraction  String?
+  itemCode      String?
+  source        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([barcode])
+  @@index([itemCode])
+  @@index([productName])
+  @@index([updatedAt])
 }
